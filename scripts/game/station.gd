@@ -23,6 +23,7 @@ const MODULE_COLORS := {
 	2: Color(1.0,  0.5,  0.0),    # TURRET     — orange
 	3: Color(0.2,  0.3,  1.0),    # SHIELD     — blue
 	4: Color(0.2,  1.0,  0.3),    # REPAIR     — green
+	5: Color(1.0,  0.15, 0.7),    # BOOSTER    — magenta
 }
 
 var _hovered_slot: int = -1

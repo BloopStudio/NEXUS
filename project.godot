@@ -70,3 +70,4 @@ shoot={
 
 renderer/rendering_method="forward_plus"
 environment/defaults/default_clear_color=Color(0.039, 0.039, 0.059, 1)
+anti_aliasing/quality/msaa_2d=2

@@ -5,9 +5,10 @@ extends Node2D
 const BUILD_TIME     := 20.0   # seconds of calm between waves
 const SPAWN_INTERVAL := 0.4    # seconds between individual spawns
 
-const ENEMY_BASIC := preload("res://scripts/enemies/enemy_basic.gd")
-const ENEMY_FAST  := preload("res://scripts/enemies/enemy_fast.gd")
-const ENEMY_TANK  := preload("res://scripts/enemies/enemy_tank.gd")
+const ENEMY_BASIC  := preload("res://scripts/enemies/enemy_basic.gd")
+const ENEMY_FAST   := preload("res://scripts/enemies/enemy_fast.gd")
+const ENEMY_TANK   := preload("res://scripts/enemies/enemy_tank.gd")
+const ENEMY_RANGED := preload("res://scripts/enemies/enemy_ranged.gd")
 
 var _spawn_queue: Array[String] = []
 var _spawn_timer: float = 0.0
@@ -96,6 +97,12 @@ func _build_wave_queue(wave: int) -> Array[String]:
 		for _i in tanks:
 			q.append("tank")
 
+	# Ranged attackers from wave 3
+	if wave >= 3:
+		var ranged := 1 + (wave - 3) / 2
+		for _i in ranged:
+			q.append("ranged")
+
 	# Shuffle to mix types
 	q.shuffle()
 	return q
@@ -127,10 +134,11 @@ func _spawn_enemy_rpc(id: int, type: String, spawn_pos: Vector2) -> void:
 		return
 	var enemy: Node2D
 	match type:
-		"basic": enemy = ENEMY_BASIC.new()
-		"fast":  enemy = ENEMY_FAST.new()
-		"tank":  enemy = ENEMY_TANK.new()
-		_:       enemy = ENEMY_BASIC.new()
+		"basic":  enemy = ENEMY_BASIC.new()
+		"fast":   enemy = ENEMY_FAST.new()
+		"tank":   enemy = ENEMY_TANK.new()
+		"ranged": enemy = ENEMY_RANGED.new()
+		_:        enemy = ENEMY_BASIC.new()
 
 	enemy.enemy_id = id
 	enemy.global_position = spawn_pos

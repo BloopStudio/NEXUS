@@ -35,6 +35,7 @@ Elle dispose de **8 emplacements** pour les modules.
 | 🔫 Tourelle | Tire automatiquement sur les ennemis |
 | 🛡 Bouclier | Régénère la vie de la station après chaque vague |
 | ❤ Réparation | Augmente la vie max de la station |
+| 💪 Amplificateur | Augmente les dégâts des tirs des joueurs |
 
 Chaque module a 3 niveaux d'amélioration.
 
@@ -48,6 +49,7 @@ Entre chaque vague : phase de construction pour améliorer la station.
 | Basic | Triangle rouge | Standard |
 | Fast | Diamant orange | Rapide, peu de vie |
 | Tank | Hexagone violet | Lent, très résistant |
+| Ranged (dès la vague 3) | Diamant magenta | Garde ses distances et tire sur la station |
 
 ## Build
 

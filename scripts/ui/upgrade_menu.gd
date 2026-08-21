@@ -11,8 +11,13 @@ const C_DIM     := Color(0.5, 0.5, 0.6)
 const C_DISABLED := Color(0.3, 0.3, 0.35)
 
 # Icons per module type (enum index matches GameState.ModuleType)
-const MODULE_ICONS  := ["➕", "⚡", "🔫", "🛡", "❤"]
-const MODULE_NAMES  := ["Vide", "Générateur", "Tourelle", "Bouclier", "Réparation"]
+const MODULE_ICONS  := ["➕", "⚡", "🔫", "🛡", "❤", "💪"]
+const MODULE_NAMES  := ["Vide", "Générateur", "Tourelle", "Bouclier", "Réparation", "Amplificateur"]
+const BUILDABLE_TYPES := [
+	GameState.ModuleType.GENERATOR, GameState.ModuleType.TURRET,
+	GameState.ModuleType.SHIELD,    GameState.ModuleType.REPAIR,
+	GameState.ModuleType.BOOSTER,
+]
 
 var _hint_label: Label = null
 
@@ -63,8 +68,8 @@ func _build_ui() -> void:
 	_panel.anchor_right  = 0.5
 	_panel.anchor_top    = 1.0
 	_panel.anchor_bottom = 1.0
-	_panel.offset_left   = -260.0
-	_panel.offset_right  =  260.0
+	_panel.offset_left   = -300.0
+	_panel.offset_right  =  300.0
 	_panel.offset_top    = -190.0
 	_panel.offset_bottom = -16.0
 	add_child(_panel)
@@ -140,11 +145,11 @@ func _rebuild_panel_contents() -> void:
 		row.theme_override_constants = {"separation": 8}
 		_panel_body.add_child(row)
 
-		for t in [GameState.ModuleType.GENERATOR, GameState.ModuleType.TURRET,
-				  GameState.ModuleType.SHIELD,    GameState.ModuleType.REPAIR]:
+		for t in BUILDABLE_TYPES:
 			var captured_t: GameState.ModuleType = t
 			var b := Button.new()
-			b.custom_minimum_size = Vector2(112, 56)
+			b.custom_minimum_size = Vector2(104, 56)
+			b.add_theme_font_size_override("font_size", 12)
 			b.pressed.connect(func(): _build(captured_t))
 			row.add_child(b)
 			_build_buttons.append(b)
@@ -177,10 +182,8 @@ func _refresh_affordability() -> void:
 	var mtype: int = slot.get("type", 0)
 
 	if mtype == GameState.ModuleType.EMPTY:
-		var types := [GameState.ModuleType.GENERATOR, GameState.ModuleType.TURRET,
-					  GameState.ModuleType.SHIELD,    GameState.ModuleType.REPAIR]
 		for i in _build_buttons.size():
-			var t: GameState.ModuleType = types[i]
+			var t: GameState.ModuleType = BUILDABLE_TYPES[i]
 			var cost: float = GameState.get_module_build_cost(t)
 			var can: bool   = GameState.can_afford(cost)
 			var b := _build_buttons[i]

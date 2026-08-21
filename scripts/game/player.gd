@@ -49,7 +49,7 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_pressed("shoot") and _shoot_timer <= 0.0:
 		_shoot_timer = SHOOT_COOLDOWN
 		var target := get_global_mouse_position()
-		_shoot_rpc.rpc(target)
+		_shoot_rpc.rpc(target, BULLET_DAMAGE * GameState.get_player_damage_multiplier())
 
 
 @rpc("any_peer", "call_local", "unreliable")
@@ -59,12 +59,12 @@ func _move_rpc(pos: Vector2) -> void:
 
 
 @rpc("any_peer", "call_local", "reliable")
-func _shoot_rpc(target_pos: Vector2) -> void:
+func _shoot_rpc(target_pos: Vector2, damage: float) -> void:
 	# Spawn a bullet
 	var bullet := _Bullet.new()
 	bullet.global_position = global_position
 	bullet.direction = (target_pos - global_position).normalized()
-	bullet.damage = BULLET_DAMAGE
+	bullet.damage = damage
 	get_parent().add_child(bullet)
 	queue_redraw()
 

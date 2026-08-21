@@ -14,7 +14,9 @@ signal module_slots_changed(slot_index: int)
 enum Phase { MENU, BUILD, WAVE, UPGRADE, GAME_OVER }
 
 # ─── Module types ──────────────────────────────────────────────────────────────
-enum ModuleType { EMPTY, GENERATOR, TURRET, SHIELD, REPAIR }
+# BOOSTER is appended last so existing type values (used over the network)
+# stay stable.
+enum ModuleType { EMPTY, GENERATOR, TURRET, SHIELD, REPAIR, BOOSTER }
 
 # ─── Costs (energy) ────────────────────────────────────────────────────────────
 const MODULE_COSTS := {
@@ -22,7 +24,10 @@ const MODULE_COSTS := {
 	ModuleType.TURRET:    40,
 	ModuleType.SHIELD:    50,
 	ModuleType.REPAIR:    35,
+	ModuleType.BOOSTER:   45,
 }
+const BOOSTER_DAMAGE_BONUS_PER_LEVEL := 0.15  # +15% player bullet damage per level, per module
+const REPAIR_MAX_HP_BONUS_PER_LEVEL := 60.0   # +60 max station HP per level, per module
 const UPGRADE_COST_MULTIPLIER := 1.8  # cost *= multiplier per level
 
 # ─── State ─────────────────────────────────────────────────────────────────────
@@ -192,6 +197,7 @@ func build_module(slot_index: int, type: ModuleType) -> bool:
 	if not spend_energy(cost):
 		return false
 	module_slots[slot_index] = {"type": type, "level": 1}
+	_recompute_station_max_hp()
 	module_slots_changed.emit(slot_index)
 	return true
 
@@ -204,8 +210,32 @@ func upgrade_module(slot_index: int) -> bool:
 	if not spend_energy(cost):
 		return false
 	module_slots[slot_index]["level"] += 1
+	_recompute_station_max_hp()
 	module_slots_changed.emit(slot_index)
 	return true
+
+
+## REPAIR modules raise the station's max HP (the extra capacity becomes
+## available headroom — building one doesn't instantly heal the station).
+func _recompute_station_max_hp() -> void:
+	var bonus := 0.0
+	for slot in module_slots:
+		if slot["type"] == ModuleType.REPAIR:
+			bonus += REPAIR_MAX_HP_BONUS_PER_LEVEL * slot["level"]
+	var new_max := 500.0 + bonus
+	if new_max != station_max_hp:
+		station_max_hp = new_max
+		station_hp = station_hp  # re-run the setter so it re-clamps against the new max
+
+
+## Sums the damage bonus from every built BOOSTER module (players hit harder
+## the more of these the team builds and upgrades).
+func get_player_damage_multiplier() -> float:
+	var mult := 1.0
+	for slot in module_slots:
+		if slot["type"] == ModuleType.BOOSTER:
+			mult += BOOSTER_DAMAGE_BONUS_PER_LEVEL * slot["level"]
+	return mult
 
 
 # ─── Station ───────────────────────────────────────────────────────────────────
