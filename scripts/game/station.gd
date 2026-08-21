@@ -24,22 +24,30 @@ const MODULE_COLORS := {
 	3: Color(0.2,  0.3,  1.0),    # SHIELD     — blue
 	4: Color(0.2,  1.0,  0.3),    # REPAIR     — green
 	5: Color(1.0,  0.15, 0.7),    # BOOSTER    — magenta
+	6: Color(0.9,  0.2,  0.15),   # MINE       — red
 }
 
 var _hovered_slot: int = -1
 
-# Auto-firing for Turret modules
+# Auto-firing for Turret modules, and pulse timers for Mine modules —
+# indexed by slot index; grown/shrunk to match module_slots.size() (the
+# skill tree can unlock extra slots mid-match).
 var _turret_timers: Array[float] = []
+var _mine_timers: Array[float] = []
 
 # Muzzle flash: slot_index -> {"target": Vector2, "t": float}
 var _flashes: Dictionary = {}
 const FLASH_DURATION := 0.09
+# Mine pulse: slot_index -> seconds remaining for the expanding ring visual
+var _mine_pulses: Dictionary = {}
+const MINE_PULSE_DURATION := 0.35
+const MINE_RADIUS := 150.0
+const MINE_INTERVAL := 3.0
 
 signal slot_clicked(slot_index: int)
 
 func _ready() -> void:
-	_turret_timers.resize(8)
-	_turret_timers.fill(0.0)
+	_resize_timers()
 	GameState.station_health_changed.connect(func(_v): queue_redraw())
 	GameState.module_slots_changed.connect(func(_i): queue_redraw())
 
@@ -47,9 +55,23 @@ func _ready() -> void:
 	set_process_input(true)
 
 
+func _slot_count() -> int:
+	return GameState.module_slots.size()
+
+
+func _resize_timers() -> void:
+	var n := _slot_count()
+	_turret_timers.resize(n)
+	_mine_timers.resize(n)
+
+
 func _process(delta: float) -> void:
+	if _turret_timers.size() != _slot_count():
+		_resize_timers()
 	_update_turrets(delta)
+	_update_mines(delta)
 	_update_flashes(delta)
+	_update_mine_pulses(delta)
 
 
 func _update_flashes(delta: float) -> void:
@@ -66,16 +88,18 @@ func _update_flashes(delta: float) -> void:
 
 
 func _draw() -> void:
+	var n := _slot_count()
+
 	# Outer ring
 	draw_arc(Vector2.ZERO, RING_RADIUS + 4, 0, TAU, 64, C_RING, 2.0)
 
 	# Slot connectors (lines from center to each slot)
-	for i in 8:
+	for i in n:
 		var pos := _slot_pos(i)
 		draw_line(Vector2.ZERO, pos, C_RING, 1.0)
 
 	# Slots
-	for i in 8:
+	for i in n:
 		var pos := _slot_pos(i)
 		var slot := GameState.module_slots[i]
 		var mtype: int = slot["type"]
@@ -117,6 +141,13 @@ func _draw() -> void:
 		draw_line(from, f["target"], Color(1.0, 0.85, 0.3, alpha), 2.0)
 		draw_circle(from, 6.0 * alpha, Color(1.0, 0.9, 0.5, alpha))
 
+	# Mine pulses — expanding ring from the station center
+	for slot_index in _mine_pulses:
+		var t: float = _mine_pulses[slot_index]
+		var progress := 1.0 - clampf(t / MINE_PULSE_DURATION, 0.0, 1.0)
+		var alpha := 1.0 - progress
+		draw_arc(Vector2.ZERO, MINE_RADIUS * progress, 0, TAU, 40, Color(1.0, 0.3, 0.2, alpha), 3.0)
+
 
 func _input(event: InputEvent) -> void:
 	# Use get_global_mouse_position() (not the raw viewport-space event.position)
@@ -137,7 +168,7 @@ func _update_turrets(delta: float) -> void:
 	if not NetworkManager.is_host():
 		return  # Only host simulates
 
-	for i in 8:
+	for i in _slot_count():
 		var slot := GameState.module_slots[i]
 		if slot["type"] != GameState.ModuleType.TURRET:
 			continue
@@ -182,14 +213,65 @@ func _turret_damage(level: int) -> float:
 		_: return 15.0
 
 
+# ─── Mine logic ────────────────────────────────────────────────────────────────
+## Unlike Turret (single-target), Mine periodically pulses damage to every
+## enemy within MINE_RADIUS of the station — a defensive, no-aim area module.
+func _update_mines(delta: float) -> void:
+	if not NetworkManager.is_host():
+		return
+
+	for i in _slot_count():
+		var slot := GameState.module_slots[i]
+		if slot["type"] != GameState.ModuleType.MINE:
+			continue
+
+		_mine_timers[i] -= delta
+		if _mine_timers[i] <= 0.0:
+			_mine_timers[i] = MINE_INTERVAL
+			_pulse_mine(i, slot["level"])
+
+
+func _pulse_mine(slot_index: int, level: int) -> void:
+	var game := get_parent()
+	if game == null or not game.has_method("get_enemies_in_radius"):
+		return
+	var dmg := _mine_damage(level)
+	for enemy in game.get_enemies_in_radius(global_position, MINE_RADIUS):
+		enemy.take_damage(dmg)
+	AudioManager.play_sfx(AudioManager.SFX.TURRET_SHOT, -6.0)
+	_mine_pulses[slot_index] = MINE_PULSE_DURATION
+	queue_redraw()
+
+
+func _mine_damage(level: int) -> float:
+	match level:
+		1: return 20.0
+		2: return 35.0
+		3: return 55.0
+		_: return 20.0
+
+
+func _update_mine_pulses(delta: float) -> void:
+	if _mine_pulses.is_empty():
+		return
+	var expired := []
+	for slot_index in _mine_pulses:
+		_mine_pulses[slot_index] -= delta
+		if _mine_pulses[slot_index] <= 0.0:
+			expired.append(slot_index)
+	for slot_index in expired:
+		_mine_pulses.erase(slot_index)
+	queue_redraw()
+
+
 # ─── Helpers ───────────────────────────────────────────────────────────────────
 func _slot_pos(index: int) -> Vector2:
-	var angle := (index / 8.0) * TAU - PI / 2.0
+	var angle := (index / float(_slot_count())) * TAU - PI / 2.0
 	return Vector2(cos(angle), sin(angle)) * RING_RADIUS
 
 
 func _get_slot_at(local_pos: Vector2) -> int:
-	for i in 8:
+	for i in _slot_count():
 		if local_pos.distance_to(_slot_pos(i)) <= SLOT_RADIUS + 8:
 			return i
 	return -1

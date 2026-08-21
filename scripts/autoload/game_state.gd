@@ -16,7 +16,7 @@ enum Phase { MENU, BUILD, WAVE, UPGRADE, GAME_OVER }
 # ─── Module types ──────────────────────────────────────────────────────────────
 # BOOSTER is appended last so existing type values (used over the network)
 # stay stable.
-enum ModuleType { EMPTY, GENERATOR, TURRET, SHIELD, REPAIR, BOOSTER }
+enum ModuleType { EMPTY, GENERATOR, TURRET, SHIELD, REPAIR, BOOSTER, MINE }
 
 # ─── Costs (energy) ────────────────────────────────────────────────────────────
 const MODULE_COSTS := {
@@ -25,6 +25,7 @@ const MODULE_COSTS := {
 	ModuleType.SHIELD:    50,
 	ModuleType.REPAIR:    35,
 	ModuleType.BOOSTER:   45,
+	ModuleType.MINE:      55,
 }
 const BOOSTER_DAMAGE_BONUS_PER_LEVEL := 0.15  # +15% player bullet damage per level, per module
 const REPAIR_MAX_HP_BONUS_PER_LEVEL := 60.0   # +60 max station HP per level, per module
@@ -52,8 +53,12 @@ var station_hp: float = 500.0:
 			_trigger_game_over()
 
 # Slots: array of {type: ModuleType, level: int}
-# 8 slots arranged in a ring around the station
+# 8 slots arranged in a ring around the station by default — the skill tree
+# (see unlock_slot() below) can grow this up to MAX_SLOTS during a match.
 var module_slots: Array[Dictionary] = []
+const STARTING_SLOTS := 8
+const MAX_SLOTS := 12
+const SLOT_UNLOCK_COSTS := [150.0, 220.0, 300.0, 400.0]  # cost of the 9th..12th slot
 
 # ─── Init ──────────────────────────────────────────────────────────────────────
 func _ready() -> void:
@@ -153,8 +158,43 @@ func _request_upgrade_rpc(slot_index: int) -> void:
 
 func _init_slots() -> void:
 	module_slots.clear()
-	for i in 8:
+	for i in STARTING_SLOTS:
 		module_slots.append({"type": ModuleType.EMPTY, "level": 0})
+
+
+## Cost of the next slot the skill tree would unlock, or -1.0 if already at
+## MAX_SLOTS.
+func get_next_slot_unlock_cost() -> float:
+	var next_index := module_slots.size() - STARTING_SLOTS
+	if next_index < 0 or next_index >= SLOT_UNLOCK_COSTS.size():
+		return -1.0
+	return SLOT_UNLOCK_COSTS[next_index]
+
+
+## Adds one more (empty) module slot to the station ring, if affordable and
+## not already at MAX_SLOTS. This is the whole "skill tree" for now: a
+## single repeatable node, each pick pricier than the last.
+func unlock_slot() -> bool:
+	var cost := get_next_slot_unlock_cost()
+	if cost < 0.0 or not spend_energy(cost):
+		return false
+	module_slots.append({"type": ModuleType.EMPTY, "level": 0})
+	module_slots_changed.emit(-1)
+	return true
+
+
+func request_unlock_slot() -> void:
+	if NetworkManager.is_host():
+		unlock_slot()
+	else:
+		_request_unlock_slot_rpc.rpc_id(1)
+
+
+@rpc("any_peer", "reliable")
+func _request_unlock_slot_rpc() -> void:
+	if not multiplayer.is_server():
+		return
+	unlock_slot()
 
 
 # ─── Phase management ──────────────────────────────────────────────────────────
@@ -215,12 +255,27 @@ func upgrade_module(slot_index: int) -> bool:
 	return true
 
 
-## Clears a built module back to EMPTY. No energy refund — mirrors the
-## "sunk cost" of most base-building games and keeps the economy simple.
+const DESTROY_REFUND_RATIO := 0.3
+
+## Total energy spent building + upgrading a module up to `level` — used to
+## compute the destroy refund.
+func get_module_total_invested(type: ModuleType, level: int) -> float:
+	var base: float = MODULE_COSTS.get(type, 0.0)
+	var total := base  # cost to build at level 1
+	for l in range(1, level):
+		total += base * pow(UPGRADE_COST_MULTIPLIER, l)
+	return total
+
+
+## Clears a built module back to EMPTY, refunding DESTROY_REFUND_RATIO of
+## everything spent building + upgrading it.
 func destroy_module(slot_index: int) -> bool:
-	if module_slots[slot_index]["type"] == ModuleType.EMPTY:
+	var slot: Dictionary = module_slots[slot_index]
+	if slot["type"] == ModuleType.EMPTY:
 		return false
+	var invested := get_module_total_invested(slot["type"], slot["level"])
 	module_slots[slot_index] = {"type": ModuleType.EMPTY, "level": 0}
+	add_energy(invested * DESTROY_REFUND_RATIO)
 	_recompute_station_max_hp()
 	module_slots_changed.emit(slot_index)
 	return true

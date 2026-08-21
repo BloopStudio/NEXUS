@@ -186,6 +186,16 @@ func get_nearest_enemy(pos: Vector2) -> Node2D:
 	return best
 
 
+## Used by the MINE module for its area-of-effect pulse.
+func get_enemies_in_radius(pos: Vector2, radius: float) -> Array:
+	var result := []
+	for child in get_children():
+		if child.has_method("take_damage") and child.has_signal("died") and not child.is_queued_for_deletion():
+			if pos.distance_to(child.global_position) <= radius:
+				result.append(child)
+	return result
+
+
 # ─── Signal handlers ────────────────────────────────────────────────────────────
 
 func _on_player_disconnected(peer_id: int) -> void:

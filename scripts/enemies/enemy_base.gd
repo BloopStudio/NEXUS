@@ -85,8 +85,14 @@ func set_network_state(pos: Vector2, new_hp: float) -> void:
 
 func _draw() -> void:
 	var col := color if _hit_flash <= 0.0 else Color.WHITE
+	# Soft glow behind the shape so enemies read clearly against the grid.
+	draw_circle(Vector2.ZERO, shape_radius * 1.35, Color(color.r, color.g, color.b, 0.15))
+
 	draw_set_transform(Vector2.ZERO, _facing_angle, Vector2.ONE)
 	_draw_shape(col)
+	# "Eye" facing the direction of travel — small bright dot near the front
+	# tip, now that shapes are actually oriented toward their target.
+	draw_circle(Vector2(0, -shape_radius * 0.45), shape_radius * 0.16, Color(1.0, 1.0, 1.0, 0.85))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	# HP bar (drawn unrotated so it always reads horizontally)

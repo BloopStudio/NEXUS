@@ -26,18 +26,26 @@ Jeu de survie/vagues/gestion multijoueur — défendez votre station ensemble.
 
 ### Station
 La station centrale est votre objectif. Si sa vie tombe à 0, c'est game over.
-Elle dispose de **8 emplacements** pour les modules.
+Elle dispose de **8 emplacements** pour les modules, extensibles jusqu'à
+**12** via l'arbre de compétences (bouton 🌳 en haut à gauche pendant la
+phase de construction, coût en énergie croissant).
 
 ### Modules
 | Module | Effet |
 |--------|-------|
 | ⚡ Générateur | Produit de l'énergie passivement |
-| 🔫 Tourelle | Tire automatiquement sur les ennemis |
+| 🔫 Tourelle | Tire automatiquement sur l'ennemi le plus proche |
 | 🛡 Bouclier | Régénère la vie de la station après chaque vague |
 | ❤ Réparation | Augmente la vie max de la station |
 | 💪 Amplificateur | Augmente les dégâts des tirs des joueurs |
+| 💣 Mine | Dégâts de zone périodiques à tous les ennemis proches |
 
-Chaque module a 3 niveaux d'amélioration.
+Chaque module a 3 niveaux d'amélioration, et peut être détruit pour
+récupérer 30% de l'énergie investie (construction + améliorations).
+
+### Sort du joueur
+**Onde de choc** (touche E par défaut, réassignable) : dégâts de zone
+autour du joueur, sur un temps de recharge de 6 secondes.
 
 ### Vagues
 Des vagues d'ennemis arrivent à intervalles réguliers.
@@ -50,6 +58,7 @@ Entre chaque vague : phase de construction pour améliorer la station.
 | Fast | Diamant orange | Rapide, peu de vie |
 | Tank | Hexagone violet | Lent, très résistant |
 | Ranged (dès la vague 3) | Diamant magenta | Garde ses distances et tire sur la station |
+| Splitter (dès la vague 5) | Pentagone jaune | Se scinde en 2 Fast à sa mort |
 
 ## Build
 

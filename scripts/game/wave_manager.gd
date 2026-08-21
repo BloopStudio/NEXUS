@@ -5,10 +5,11 @@ extends Node2D
 const BUILD_TIME     := 20.0   # seconds of calm between waves
 const SPAWN_INTERVAL := 0.4    # seconds between individual spawns
 
-const ENEMY_BASIC  := preload("res://scripts/enemies/enemy_basic.gd")
-const ENEMY_FAST   := preload("res://scripts/enemies/enemy_fast.gd")
-const ENEMY_TANK   := preload("res://scripts/enemies/enemy_tank.gd")
-const ENEMY_RANGED := preload("res://scripts/enemies/enemy_ranged.gd")
+const ENEMY_BASIC    := preload("res://scripts/enemies/enemy_basic.gd")
+const ENEMY_FAST     := preload("res://scripts/enemies/enemy_fast.gd")
+const ENEMY_TANK     := preload("res://scripts/enemies/enemy_tank.gd")
+const ENEMY_RANGED   := preload("res://scripts/enemies/enemy_ranged.gd")
+const ENEMY_SPLITTER := preload("res://scripts/enemies/enemy_splitter.gd")
 
 var _spawn_queue: Array[String] = []
 var _spawn_timer: float = 0.0
@@ -103,6 +104,12 @@ func _build_wave_queue(wave: int) -> Array[String]:
 		for _i in ranged:
 			q.append("ranged")
 
+	# Splitters from wave 5
+	if wave >= 5:
+		var splitters := 1 + (wave - 5) / 3
+		for _i in splitters:
+			q.append("splitter")
+
 	# Shuffle to mix types
 	q.shuffle()
 	return q
@@ -134,11 +141,12 @@ func _spawn_enemy_rpc(id: int, type: String, spawn_pos: Vector2) -> void:
 		return
 	var enemy: Node2D
 	match type:
-		"basic":  enemy = ENEMY_BASIC.new()
-		"fast":   enemy = ENEMY_FAST.new()
-		"tank":   enemy = ENEMY_TANK.new()
-		"ranged": enemy = ENEMY_RANGED.new()
-		_:        enemy = ENEMY_BASIC.new()
+		"basic":    enemy = ENEMY_BASIC.new()
+		"fast":     enemy = ENEMY_FAST.new()
+		"tank":     enemy = ENEMY_TANK.new()
+		"ranged":   enemy = ENEMY_RANGED.new()
+		"splitter": enemy = ENEMY_SPLITTER.new()
+		_:          enemy = ENEMY_BASIC.new()
 
 	enemy.enemy_id = id
 	enemy.global_position = spawn_pos
@@ -211,6 +219,27 @@ func _apply_shield_regen() -> void:
 
 
 func _on_enemy_died(enemy: Node2D, energy: float) -> void:
-	_active_enemies = maxi(0, _active_enemies - 1)
 	GameState.add_energy(energy)
 	_remove_enemy_rpc.rpc(enemy.enemy_id)
+
+	# Some enemies (Splitter) spawn replacements on death instead of just
+	# disappearing — read this before the node is queued for removal above.
+	if enemy.has_method("get_split_type"):
+		var split_type: String = enemy.get_split_type()
+		if not split_type.is_empty():
+			_spawn_split_children(split_type, enemy.get_split_count(), enemy.global_position)
+			return  # active_enemies stays put — the splits replace this one
+
+	_active_enemies = maxi(0, _active_enemies - 1)
+
+
+## Splits spawn immediately at the death position (scattered a little so
+## they don't perfectly overlap) rather than going through the normal
+## spawn-queue/timer — they're a consequence of this death, not a new wave.
+func _spawn_split_children(type: String, count: int, at_pos: Vector2) -> void:
+	for i in count:
+		var offset := Vector2(cos(TAU * i / count), sin(TAU * i / count)) * 24.0
+		var id := _next_enemy_id
+		_next_enemy_id += 1
+		_spawn_enemy_rpc.rpc(id, type, at_pos + offset)
+		_active_enemies += 1

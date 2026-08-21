@@ -12,12 +12,12 @@ const C_DISABLED := Color(0.3, 0.3, 0.35)
 const C_ERROR    := Color(1.0, 0.4, 0.4)
 
 # Icons per module type (enum index matches GameState.ModuleType)
-const MODULE_ICONS  := ["➕", "⚡", "🔫", "🛡", "❤", "💪"]
-const MODULE_NAMES  := ["Vide", "Générateur", "Tourelle", "Bouclier", "Réparation", "Amplificateur"]
+const MODULE_ICONS  := ["➕", "⚡", "🔫", "🛡", "❤", "💪", "💣"]
+const MODULE_NAMES  := ["Vide", "Générateur", "Tourelle", "Bouclier", "Réparation", "Amplificateur", "Mine"]
 const BUILDABLE_TYPES := [
 	GameState.ModuleType.GENERATOR, GameState.ModuleType.TURRET,
 	GameState.ModuleType.SHIELD,    GameState.ModuleType.REPAIR,
-	GameState.ModuleType.BOOSTER,
+	GameState.ModuleType.BOOSTER,   GameState.ModuleType.MINE,
 ]
 
 # Per-level effect text, purely for display — keep these numbers in sync
@@ -31,9 +31,11 @@ const MODULE_EFFECTS := {
 	GameState.ModuleType.SHIELD:    {1: "+35 vie après chaque vague", 2: "+50 vie après chaque vague", 3: "+65 vie après chaque vague"},
 	GameState.ModuleType.REPAIR:    {1: "+60 vie max", 2: "+120 vie max", 3: "+180 vie max"},
 	GameState.ModuleType.BOOSTER:   {1: "+15% dégâts des joueurs", 2: "+30% dégâts des joueurs", 3: "+45% dégâts des joueurs"},
+	GameState.ModuleType.MINE:      {1: "20 dégâts en zone toutes les 3 s", 2: "35 dégâts en zone toutes les 3 s", 3: "55 dégâts en zone toutes les 3 s"},
 }
 
 var _hint_label: Label = null
+var _skill_btn: Button = null
 
 var _panel: PanelContainer = null
 var _panel_title: Label    = null
@@ -74,6 +76,19 @@ func _build_ui() -> void:
 	_hint_label.add_theme_color_override("font_color", C_DIM)
 	add_child(_hint_label)
 
+	# Skill tree: unlock extra station slots (top-left, under the HUD's
+	# energy panel). Always visible during BUILD/UPGRADE, one click each.
+	_skill_btn = Button.new()
+	_skill_btn.anchor_left = 0.0
+	_skill_btn.anchor_right = 0.0
+	_skill_btn.offset_left = 8.0
+	_skill_btn.offset_right = 236.0
+	_skill_btn.offset_top = 64.0
+	_skill_btn.offset_bottom = 96.0
+	_skill_btn.add_theme_font_size_override("font_size", 13)
+	_skill_btn.pressed.connect(_on_skill_pressed)
+	add_child(_skill_btn)
+
 	# Contextual panel — anchored at the bottom so it never covers the station
 	# ring (which sits centered around the middle of the screen).
 	_panel = PanelContainer.new()
@@ -82,8 +97,8 @@ func _build_ui() -> void:
 	_panel.anchor_right  = 0.5
 	_panel.anchor_top    = 1.0
 	_panel.anchor_bottom = 1.0
-	_panel.offset_left   = -300.0
-	_panel.offset_right  =  300.0
+	_panel.offset_left   = -350.0
+	_panel.offset_right  =  350.0
 	_panel.offset_top    = -190.0
 	_panel.offset_bottom = -16.0
 	add_child(_panel)
@@ -162,7 +177,7 @@ func _rebuild_panel_contents() -> void:
 		for t in BUILDABLE_TYPES:
 			var captured_t: GameState.ModuleType = t
 			var b := Button.new()
-			b.custom_minimum_size = Vector2(104, 56)
+			b.custom_minimum_size = Vector2(96, 56)
 			b.add_theme_font_size_override("font_size", 12)
 			b.tooltip_text = "%s : %s" % [MODULE_NAMES[t], MODULE_EFFECTS[t][1]]
 			b.pressed.connect(func(): _build(captured_t))
@@ -198,8 +213,10 @@ func _rebuild_panel_contents() -> void:
 			_upgrade_button.pressed.connect(_upgrade)
 			_panel_body.add_child(_upgrade_button)
 
+		var invested := GameState.get_module_total_invested(mtype, level)
+		var refund := int(invested * GameState.DESTROY_REFUND_RATIO)
 		var destroy_btn := Button.new()
-		destroy_btn.text = "🗑 Détruire (pas de remboursement)"
+		destroy_btn.text = "🗑 Détruire (+%d ⚡ remboursés)" % refund
 		destroy_btn.add_theme_color_override("font_color", C_ERROR)
 		destroy_btn.pressed.connect(_destroy)
 		_panel_body.add_child(destroy_btn)
@@ -268,6 +285,7 @@ func _on_phase_changed(phase: GameState.Phase) -> void:
 
 func _on_energy_changed(_val: float) -> void:
 	_refresh_affordability()
+	_refresh_skill_button()
 
 
 ## A slot's contents changed — either locally, another player built/upgraded
@@ -276,10 +294,32 @@ func _on_energy_changed(_val: float) -> void:
 func _on_module_slots_changed(slot_index: int) -> void:
 	if _panel.visible and (slot_index == _selected_slot or slot_index == -1):
 		_rebuild_panel_contents()
+	_refresh_skill_button()
 
 
 func _update_visibility() -> void:
 	var show := GameState.phase == GameState.Phase.BUILD or GameState.phase == GameState.Phase.UPGRADE
 	_hint_label.visible = show and _selected_slot < 0
+	_skill_btn.visible = show
 	if not show:
 		_panel.visible = false
+	_refresh_skill_button()
+
+
+# ─── Skill tree (extra station slots) ──────────────────────────────────────────
+
+func _on_skill_pressed() -> void:
+	AudioManager.play_sfx(AudioManager.SFX.UI_CLICK)
+	GameState.request_unlock_slot()
+
+
+func _refresh_skill_button() -> void:
+	var cost := GameState.get_next_slot_unlock_cost()
+	if cost < 0.0:
+		_skill_btn.text = "🌳 Emplacements au maximum"
+		_skill_btn.disabled = true
+		return
+	var can := GameState.can_afford(cost)
+	_skill_btn.text = "🌳 Nouvel emplacement — %d ⚡" % int(cost)
+	_skill_btn.disabled = not can
+	_skill_btn.modulate = C_WHITE if can else C_DISABLED

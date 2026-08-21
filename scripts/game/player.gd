@@ -8,6 +8,13 @@ const SHOOT_COOLDOWN := 0.6
 const BULLET_SPEED   := 350.0
 const BULLET_DAMAGE  := 12.0
 
+## "Onde de choc" — an area-damage burst around the player, on a cooldown.
+## The only player ability for now; default key is E (rebindable).
+const ABILITY_COOLDOWN := 6.0
+const ABILITY_RADIUS   := 90.0
+const ABILITY_DAMAGE   := 30.0
+const ABILITY_PULSE_DURATION := 0.4
+
 const C_PLAYER  := Color(0.0, 0.831, 1.0)
 const C_OUTLINE := Color(1.0, 1.0, 1.0, 0.5)
 
@@ -16,17 +23,26 @@ var player_name: String = "Player"
 var player_color: Color = C_PLAYER
 
 var _shoot_timer: float = 0.0
+var _ability_timer: float = 0.0
+var _ability_pulse: float = 0.0
 var _is_local: bool = false
 
 
 func _ready() -> void:
 	_is_local = (peer_id == multiplayer.get_unique_id())
-	set_process(_is_local)
+	# _process only ticks cosmetic timers (ability pulse animation) and
+	# redraws — needs to run for every peer's copy so remote players' ability
+	# bursts animate for observers too, not just the player who used it.
+	set_process(true)
 	set_physics_process(_is_local)
 
 
 func _process(delta: float) -> void:
 	_shoot_timer -= delta
+	if _ability_timer > 0.0:
+		_ability_timer -= delta
+	if _ability_pulse > 0.0:
+		_ability_pulse -= delta
 	# Aim indicator
 	queue_redraw()
 
@@ -51,11 +67,32 @@ func _physics_process(delta: float) -> void:
 		var target := get_global_mouse_position()
 		_shoot_rpc.rpc(target, BULLET_DAMAGE * GameState.get_player_damage_multiplier())
 
+	# Ability: "Onde de choc" — area burst, default key E
+	if Input.is_action_just_pressed("ability") and _ability_timer <= 0.0:
+		_ability_timer = ABILITY_COOLDOWN
+		_ability_rpc.rpc()
+
 
 @rpc("any_peer", "call_local", "unreliable")
 func _move_rpc(pos: Vector2) -> void:
 	global_position = pos
 	queue_redraw()
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _ability_rpc() -> void:
+	_ability_pulse = ABILITY_PULSE_DURATION
+	AudioManager.play_sfx(AudioManager.SFX.UPGRADE, 2.0)
+	queue_redraw()
+
+	# Only the host actually applies damage — same pattern as bullets/mines,
+	# every peer just plays the same visual/audio locally.
+	if NetworkManager.is_host():
+		var parent := get_parent()
+		if parent != null and parent.has_method("get_enemies_in_radius"):
+			var dmg := ABILITY_DAMAGE * GameState.get_player_damage_multiplier()
+			for enemy in parent.get_enemies_in_radius(global_position, ABILITY_RADIUS):
+				enemy.take_damage(dmg)
 
 
 @rpc("any_peer", "call_local", "reliable")
@@ -70,14 +107,32 @@ func _shoot_rpc(target_pos: Vector2, damage: float) -> void:
 
 
 func _draw() -> void:
-	# Body: small circle with direction indicator
-	draw_circle(Vector2.ZERO, 12.0, player_color.darkened(0.3))
-	draw_arc(Vector2.ZERO, 12.0, 0, TAU, 24, player_color, 2.0)
+	# Soft outer glow so players read clearly against the background grid.
+	draw_circle(Vector2.ZERO, 17.0, Color(player_color.r, player_color.g, player_color.b, 0.12))
 
-	# Aim direction line (toward mouse, only for local player)
+	# Body: shaded circle + bright rim + a small highlight for some depth.
+	draw_circle(Vector2.ZERO, 12.0, player_color.darkened(0.35))
+	draw_circle(Vector2(-4.0, -4.0), 4.0, player_color.lightened(0.5).lerp(Color.WHITE, 0.3) * Color(1, 1, 1, 0.55))
+	draw_arc(Vector2.ZERO, 12.0, 0, TAU, 28, player_color, 2.0, true)
+
+	# Aim direction: gun barrel + line (toward mouse, only for the local
+	# player — remote players' aim isn't networked, only their position).
 	if _is_local:
-		var aim := to_local(get_global_mouse_position()).normalized() * 18.0
-		draw_line(Vector2.ZERO, aim, player_color.lightened(0.4), 1.5)
+		var aim_dir := to_local(get_global_mouse_position()).normalized()
+		var aim := aim_dir * 18.0
+		draw_line(Vector2.ZERO, aim, player_color.lightened(0.4), 1.5, true)
+		var barrel_base := aim_dir * 10.0
+		var perp := Vector2(-aim_dir.y, aim_dir.x) * 2.0
+		draw_polygon(PackedVector2Array([
+			barrel_base + perp, barrel_base - perp,
+			aim_dir * 20.0 - perp, aim_dir * 20.0 + perp,
+		]), [Color(0.85, 0.85, 0.9)])
+
+	# Ability pulse — expanding, fading ring on every peer that sees it.
+	if _ability_pulse > 0.0:
+		var progress := 1.0 - clampf(_ability_pulse / ABILITY_PULSE_DURATION, 0.0, 1.0)
+		draw_arc(Vector2.ZERO, ABILITY_RADIUS * progress, 0, TAU, 40,
+			Color(player_color.r, player_color.g, player_color.b, 1.0 - progress), 3.0, true)
 
 	# Name tag — centered above the player, with a backing pill for contrast
 	# against the background grid (a plain outlined string was easy to miss).
