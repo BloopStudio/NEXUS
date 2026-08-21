@@ -174,7 +174,7 @@ func _build_ui() -> void:
 	_status_label.add_theme_font_size_override("font_size", 14)
 	_status_label.add_theme_color_override("font_color", C_DIM)
 	var game_version: String = ProjectSettings.get_setting("application/config/version", "0.0.0")
-	_status_label.text = "BloopStudio — v%s — Godot 4 — ENet P2P" % game_version
+	_status_label.text = "BloopStudio — v%s" % game_version
 	center.add_child(_status_label)
 
 

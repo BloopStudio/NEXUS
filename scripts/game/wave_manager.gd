@@ -151,6 +151,7 @@ func _spawn_enemy_rpc(id: int, type: String, spawn_pos: Vector2) -> void:
 	enemy.enemy_id = id
 	enemy.global_position = spawn_pos
 	enemy.init(station_node.global_position)
+	enemy.add_to_group("enemies")
 	_enemy_registry[id] = enemy
 
 	if NetworkManager.is_host():

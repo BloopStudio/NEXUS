@@ -161,14 +161,15 @@ class _Bullet extends Node2D:
 		if _lifetime <= 0.0:
 			queue_free()
 			return
-		# Check collision with enemies
+		# Check collision with enemies — via the "enemies" group instead of
+		# rescanning/duck-typing every sibling (which also includes every
+		# other in-flight bullet), a lot cheaper with several players firing.
 		if NetworkManager.is_host():
-			for child in get_parent().get_children():
-				if child.has_method("take_damage") and not child.is_queued_for_deletion():
-					if global_position.distance_to(child.global_position) < 16.0:
-						child.take_damage(damage)
-						queue_free()
-						return
+			for enemy in get_tree().get_nodes_in_group("enemies"):
+				if not enemy.is_queued_for_deletion() and global_position.distance_to(enemy.global_position) < 16.0:
+					enemy.take_damage(damage)
+					queue_free()
+					return
 		queue_redraw()
 
 	func _draw() -> void:

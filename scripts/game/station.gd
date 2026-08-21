@@ -89,18 +89,20 @@ func _update_flashes(delta: float) -> void:
 
 func _draw() -> void:
 	var n := _slot_count()
+	var positions: Array[Vector2] = []
+	for i in n:
+		positions.append(_slot_pos(i))
 
 	# Outer ring
 	draw_arc(Vector2.ZERO, RING_RADIUS + 4, 0, TAU, 64, C_RING, 2.0)
 
 	# Slot connectors (lines from center to each slot)
 	for i in n:
-		var pos := _slot_pos(i)
-		draw_line(Vector2.ZERO, pos, C_RING, 1.0)
+		draw_line(Vector2.ZERO, positions[i], C_RING, 1.0)
 
 	# Slots
 	for i in n:
-		var pos := _slot_pos(i)
+		var pos := positions[i]
 		var slot := GameState.module_slots[i]
 		var mtype: int = slot["type"]
 		var col: Color = MODULE_COLORS.get(mtype, C_SLOT_EMPTY)

@@ -171,28 +171,32 @@ func _add_player(peer_id: int) -> void:
 
 
 # ─── Nearest enemy helper (used by Station turrets) ────────────────────────────
+# Enemies register themselves in the "enemies" group on spawn (see
+# WaveManager._spawn_enemy_rpc). Looking them up this way is an engine-
+# maintained flat list, versus rescanning every child of Game (which also
+# includes players and every currently-flying bullet) and duck-typing each
+# one with has_method()/has_signal() reflection calls — this used to run on
+# every single turret shot, mine pulse, and player ability cast.
 
 func get_nearest_enemy(pos: Vector2) -> Node2D:
 	var best: Node2D = null
 	var best_dist := INF
-	for child in get_children():
-		if child.has_method("take_damage") and not child.is_queued_for_deletion():
-			# Exclude Station and Player nodes by checking for "died" signal
-			if child.has_signal("died"):
-				var d := pos.distance_to(child.global_position)
-				if d < best_dist:
-					best_dist = d
-					best = child
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if enemy.is_queued_for_deletion():
+			continue
+		var d := pos.distance_to(enemy.global_position)
+		if d < best_dist:
+			best_dist = d
+			best = enemy
 	return best
 
 
-## Used by the MINE module for its area-of-effect pulse.
+## Used by the MINE module and player ability for their area-of-effect pulse.
 func get_enemies_in_radius(pos: Vector2, radius: float) -> Array:
 	var result := []
-	for child in get_children():
-		if child.has_method("take_damage") and child.has_signal("died") and not child.is_queued_for_deletion():
-			if pos.distance_to(child.global_position) <= radius:
-				result.append(child)
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if not enemy.is_queued_for_deletion() and pos.distance_to(enemy.global_position) <= radius:
+			result.append(enemy)
 	return result
 
 
