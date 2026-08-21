@@ -123,18 +123,9 @@ func _connect_signals() -> void:
 	GameState.station_health_changed.connect(_on_station_health_changed)
 	GameState.phase_changed.connect(_on_phase_changed)
 
-	# Wave manager countdown
-	# We listen on _process instead to avoid coupling to WaveManager instance
-	set_process(true)
-
 	NetworkManager.player_connected.connect(func(_id): _refresh_player_list())
 	NetworkManager.player_disconnected.connect(func(_id): _refresh_player_list())
 	NetworkManager.players_updated.connect(_refresh_player_list)
-
-
-func _process(_delta: float) -> void:
-	# Update countdown bar each frame (WaveManager fires a signal but we poll for simplicity)
-	pass
 
 
 # ─── Signal handlers ──────────────────────────────────────────────────────────
