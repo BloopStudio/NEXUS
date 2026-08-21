@@ -59,6 +59,7 @@ func _start_wave() -> void:
 	_active_enemies = 0
 
 	GameState.set_phase(GameState.Phase.WAVE)
+	AudioManager.play_sfx(AudioManager.SFX.WAVE_START)
 	wave_started.emit(wave)
 
 
@@ -112,6 +113,7 @@ func _spawn_next() -> void:
 
 
 func _wave_cleared() -> void:
+	AudioManager.play_sfx(AudioManager.SFX.WAVE_CLEARED)
 	wave_cleared.emit()
 
 	# Heal shield modules

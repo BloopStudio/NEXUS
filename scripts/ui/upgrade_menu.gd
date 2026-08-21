@@ -1,5 +1,6 @@
 ## UpgradeMenu — shown during UPGRADE / BUILD phases
-## Lets players build and upgrade station modules.
+## Click directly on a station slot (see Station.slot_clicked) to build or
+## upgrade it — there is no separate list of slots to pick from.
 extends CanvasLayer
 
 const C_BG      := Color(0.05, 0.05, 0.09, 0.92)
@@ -13,10 +14,19 @@ const C_DISABLED := Color(0.3, 0.3, 0.35)
 const MODULE_ICONS  := ["➕", "⚡", "🔫", "🛡", "❤"]
 const MODULE_NAMES  := ["Vide", "Générateur", "Tourelle", "Bouclier", "Réparation"]
 
-var _root_panel: PanelContainer = null
-var _slot_buttons: Array[Button] = []
-var _sub_panel: Control         = null  # Build/upgrade sub-menu
-var _selected_slot: int         = -1
+var _hint_label: Label = null
+
+var _panel: PanelContainer = null
+var _panel_title: Label    = null
+var _panel_body: VBoxContainer = null
+var _selected_slot: int    = -1
+
+# Build mode: one button per buildable type, kept alive across affordability
+# refreshes so a passive energy tick never interrupts an in-progress click.
+var _build_buttons: Array[Button] = []
+# Upgrade mode: single "upgrade" button, kept alive the same way.
+var _upgrade_button: Button = null
+var _upgrade_label: Label   = null
 
 
 func _ready() -> void:
@@ -24,196 +34,206 @@ func _ready() -> void:
 	_build_ui()
 	GameState.phase_changed.connect(_on_phase_changed)
 	GameState.energy_changed.connect(_on_energy_changed)
+	GameState.module_slots_changed.connect(_on_module_slots_changed)
 	_update_visibility()
 
 
 func _build_ui() -> void:
-	# Semi-transparent overlay
-	var overlay := ColorRect.new()
-	overlay.color = Color(0, 0, 0, 0.35)
-	overlay.anchor_right  = 1.0
-	overlay.anchor_bottom = 1.0
-	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(overlay)
+	# Persistent hint, shown whenever nothing is selected during BUILD phase.
+	_hint_label = Label.new()
+	_hint_label.anchor_left   = 0.5
+	_hint_label.anchor_right  = 0.5
+	_hint_label.anchor_top    = 1.0
+	_hint_label.anchor_bottom = 1.0
+	_hint_label.offset_left   = -300.0
+	_hint_label.offset_right  =  300.0
+	_hint_label.offset_top    = -60.0
+	_hint_label.offset_bottom = -20.0
+	_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hint_label.text = "Clique sur un emplacement de la station pour construire ou améliorer"
+	_hint_label.add_theme_font_size_override("font_size", 14)
+	_hint_label.add_theme_color_override("font_color", C_DIM)
+	add_child(_hint_label)
 
-	# Centered panel
-	_root_panel = PanelContainer.new()
-	_root_panel.anchor_left   = 0.5
-	_root_panel.anchor_right  = 0.5
-	_root_panel.anchor_top    = 0.5
-	_root_panel.anchor_bottom = 0.5
-	_root_panel.offset_left   = -320.0
-	_root_panel.offset_right  =  320.0
-	_root_panel.offset_top    = -260.0
-	_root_panel.offset_bottom =  260.0
-	add_child(_root_panel)
+	# Contextual panel — anchored at the bottom so it never covers the station
+	# ring (which sits centered around the middle of the screen).
+	_panel = PanelContainer.new()
+	_panel.visible = false
+	_panel.anchor_left   = 0.5
+	_panel.anchor_right  = 0.5
+	_panel.anchor_top    = 1.0
+	_panel.anchor_bottom = 1.0
+	_panel.offset_left   = -260.0
+	_panel.offset_right  =  260.0
+	_panel.offset_top    = -190.0
+	_panel.offset_bottom = -16.0
+	add_child(_panel)
 
 	var vbox := VBoxContainer.new()
-	vbox.theme_override_constants = {"separation": 12}
-	_root_panel.add_child(vbox)
+	vbox.theme_override_constants = {"separation": 10}
+	_panel.add_child(vbox)
 
-	# Title
-	var title := Label.new()
-	title.text = "PHASE DE CONSTRUCTION"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 24)
-	title.add_theme_color_override("font_color", C_ACCENT)
-	vbox.add_child(title)
+	var header := HBoxContainer.new()
+	vbox.add_child(header)
+	_panel_title = Label.new()
+	_panel_title.add_theme_font_size_override("font_size", 17)
+	_panel_title.add_theme_color_override("font_color", C_ACCENT)
+	_panel_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(_panel_title)
+	var close_btn := Button.new()
+	close_btn.text = "✕"
+	close_btn.custom_minimum_size = Vector2(32, 32)
+	close_btn.pressed.connect(_deselect)
+	header.add_child(close_btn)
 
-	var sub := Label.new()
-	sub.text = "Cliquez sur un emplacement pour construire ou améliorer"
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	sub.add_theme_font_size_override("font_size", 13)
-	sub.add_theme_color_override("font_color", C_DIM)
-	vbox.add_child(sub)
-
-	# 2×4 grid of slot buttons
-	var grid := GridContainer.new()
-	grid.columns = 4
-	grid.theme_override_constants = {"h_separation": 10, "v_separation": 10}
-	vbox.add_child(grid)
-
-	_slot_buttons.clear()
-	for i in 8:
-		var btn := Button.new()
-		btn.custom_minimum_size = Vector2(130, 90)
-		btn.add_theme_font_size_override("font_size", 14)
-		var idx := i  # capture
-		btn.pressed.connect(func(): _on_slot_pressed(idx))
-		grid.add_child(btn)
-		_slot_buttons.append(btn)
-
-	# Sub-panel for build/upgrade options (hidden initially)
-	_sub_panel = VBoxContainer.new()
-	_sub_panel.visible = false
-	_sub_panel.theme_override_constants = {"separation": 8}
-	vbox.add_child(_sub_panel)
-
-	_refresh_slots()
+	_panel_body = VBoxContainer.new()
+	_panel_body.theme_override_constants = {"separation": 8}
+	vbox.add_child(_panel_body)
 
 
-# ─── Slot rendering ────────────────────────────────────────────────────────────
+# ─── Station slot click (connected externally by game.gd) ─────────────────────
 
-func _refresh_slots() -> void:
-	for i in 8:
-		var slot: Dictionary = GameState.module_slots[i]
-		var mtype: int       = slot.get("type", 0)
-		var level: int       = slot.get("level", 0)
-		var btn: Button      = _slot_buttons[i]
-
-		if mtype == GameState.ModuleType.EMPTY:
-			btn.text = "➕\nVide"
-			btn.modulate = Color(0.7, 0.7, 0.8)
-		else:
-			var stars := "★".repeat(level) + "☆".repeat(3 - level)
-			btn.text = "%s\n%s\nNiv.%d %s" % [
-				MODULE_ICONS[mtype], MODULE_NAMES[mtype], level, stars
-			]
-			btn.modulate = Color.WHITE
-
-		# Highlight selected
-		btn.flat = (i != _selected_slot)
+func on_slot_clicked(idx: int) -> void:
+	if GameState.phase != GameState.Phase.BUILD and GameState.phase != GameState.Phase.UPGRADE:
+		return
+	if idx == _selected_slot:
+		_deselect()
+	else:
+		_select(idx)
 
 
-# ─── Slot click ───────────────────────────────────────────────────────────────
-
-func _on_slot_pressed(idx: int) -> void:
+func _select(idx: int) -> void:
 	_selected_slot = idx
-	_refresh_slots()
-	_show_sub_menu(idx)
+	_hint_label.visible = false
+	_panel.visible = true
+	_rebuild_panel_contents()
 
 
-func _show_sub_menu(idx: int) -> void:
-	# Clear sub-panel
-	for child in _sub_panel.get_children():
+func _deselect() -> void:
+	_selected_slot = -1
+	_panel.visible = false
+	_hint_label.visible = (GameState.phase == GameState.Phase.BUILD)
+
+
+# ─── Panel contents ─────────────────────────────────────────────────────────────
+## Builds the interactive widgets for the selected slot ONCE. Subsequent
+## energy changes only tweak `disabled`/`modulate` on these SAME instances
+## (see _refresh_affordability) — never destroy/recreate them, otherwise a
+## click in progress gets orphaned onto a freed node and never registers
+## (this used to make building/upgrading a second module nearly impossible
+## once a Generator module was passively trickling energy every frame).
+
+func _rebuild_panel_contents() -> void:
+	for child in _panel_body.get_children():
 		child.queue_free()
-	_sub_panel.visible = true
+	_build_buttons.clear()
+	_upgrade_button = null
+	_upgrade_label = null
 
-	var slot: Dictionary = GameState.module_slots[idx]
-	var mtype: int       = slot.get("type", 0)
+	var slot: Dictionary = GameState.module_slots[_selected_slot]
+	var mtype: int = slot.get("type", 0)
 
 	if mtype == GameState.ModuleType.EMPTY:
-		# Build options
-		var lbl := Label.new()
-		lbl.text = "Construire un module :"
-		lbl.add_theme_color_override("font_color", C_WHITE)
-		_sub_panel.add_child(lbl)
+		_panel_title.text = "Emplacement %d — Construire" % (_selected_slot + 1)
 
 		var row := HBoxContainer.new()
 		row.theme_override_constants = {"separation": 8}
-		_sub_panel.add_child(row)
+		_panel_body.add_child(row)
 
 		for t in [GameState.ModuleType.GENERATOR, GameState.ModuleType.TURRET,
 				  GameState.ModuleType.SHIELD,    GameState.ModuleType.REPAIR]:
-			var cost: float = GameState.get_module_build_cost(t)
-			var can: bool   = GameState.can_afford(cost)
-			var b := Button.new()
-			b.text = "%s %s\n%d ⚡" % [MODULE_ICONS[t], MODULE_NAMES[t], int(cost)]
-			b.custom_minimum_size = Vector2(120, 60)
-			b.disabled = not can
-			if not can:
-				b.modulate = C_DISABLED
 			var captured_t: GameState.ModuleType = t
-			b.pressed.connect(func(): _build(idx, captured_t))
+			var b := Button.new()
+			b.custom_minimum_size = Vector2(112, 56)
+			b.pressed.connect(func(): _build(captured_t))
 			row.add_child(b)
+			_build_buttons.append(b)
 	else:
-		# Upgrade or max info
+		_panel_title.text = "Emplacement %d — %s" % [_selected_slot + 1, MODULE_NAMES[mtype]]
 		var level: int = slot.get("level", 0)
+
 		if level >= 3:
 			var lbl := Label.new()
 			lbl.text = "%s %s — Niveau MAX" % [MODULE_ICONS[mtype], MODULE_NAMES[mtype]]
 			lbl.add_theme_color_override("font_color", C_ACCENT)
-			_sub_panel.add_child(lbl)
+			_panel_body.add_child(lbl)
 		else:
-			var cost: float = GameState.get_module_upgrade_cost(idx)
+			_upgrade_label = Label.new()
+			_upgrade_label.add_theme_color_override("font_color", C_WHITE)
+			_panel_body.add_child(_upgrade_label)
+
+			_upgrade_button = Button.new()
+			_upgrade_button.pressed.connect(_upgrade)
+			_panel_body.add_child(_upgrade_button)
+
+	_refresh_affordability()
+
+
+## Cheap, non-destructive refresh — called on every energy tick.
+func _refresh_affordability() -> void:
+	if _selected_slot < 0 or not _panel.visible:
+		return
+	var slot: Dictionary = GameState.module_slots[_selected_slot]
+	var mtype: int = slot.get("type", 0)
+
+	if mtype == GameState.ModuleType.EMPTY:
+		var types := [GameState.ModuleType.GENERATOR, GameState.ModuleType.TURRET,
+					  GameState.ModuleType.SHIELD,    GameState.ModuleType.REPAIR]
+		for i in _build_buttons.size():
+			var t: GameState.ModuleType = types[i]
+			var cost: float = GameState.get_module_build_cost(t)
 			var can: bool   = GameState.can_afford(cost)
-
-			var lbl := Label.new()
-			lbl.text = "%s %s — Niveau %d → %d" % [MODULE_ICONS[mtype], MODULE_NAMES[mtype], level, level + 1]
-			lbl.add_theme_color_override("font_color", C_WHITE)
-			_sub_panel.add_child(lbl)
-
-			var b := Button.new()
-			b.text = "Améliorer — %d ⚡" % int(cost)
+			var b := _build_buttons[i]
+			b.text = "%s %s\n%d ⚡" % [MODULE_ICONS[t], MODULE_NAMES[t], int(cost)]
 			b.disabled = not can
-			if not can:
-				b.modulate = C_DISABLED
-			b.pressed.connect(func(): _upgrade(idx))
-			_sub_panel.add_child(b)
+			b.modulate = C_WHITE if can else C_DISABLED
+	elif _upgrade_button != null:
+		var level: int = slot.get("level", 0)
+		var cost: float = GameState.get_module_upgrade_cost(_selected_slot)
+		var can: bool   = GameState.can_afford(cost)
+		_upgrade_label.text = "%s %s — Niveau %d → %d" % [MODULE_ICONS[mtype], MODULE_NAMES[mtype], level, level + 1]
+		_upgrade_button.text = "Améliorer — %d ⚡" % int(cost)
+		_upgrade_button.disabled = not can
+		_upgrade_button.modulate = C_WHITE if can else C_DISABLED
 
 
-func _build(idx: int, mtype: GameState.ModuleType) -> void:
-	if GameState.build_module(idx, mtype):
-		_selected_slot = -1
-		_sub_panel.visible = false
-		_refresh_slots()
+func _build(mtype: GameState.ModuleType) -> void:
+	if _selected_slot < 0:
+		return
+	if GameState.build_module(_selected_slot, mtype):
+		AudioManager.play_sfx(AudioManager.SFX.BUILD)
+		_rebuild_panel_contents()
 
 
-func _upgrade(idx: int) -> void:
-	if GameState.upgrade_module(idx):
-		_sub_panel.visible = false
-		_refresh_slots()
+func _upgrade() -> void:
+	if _selected_slot < 0:
+		return
+	if GameState.upgrade_module(_selected_slot):
+		AudioManager.play_sfx(AudioManager.SFX.UPGRADE)
+		_rebuild_panel_contents()
 
 
-# ─── Visibility ───────────────────────────────────────────────────────────────
+# ─── Signal handlers ────────────────────────────────────────────────────────────
 
 func _on_phase_changed(phase: GameState.Phase) -> void:
 	_update_visibility()
 	if phase == GameState.Phase.BUILD:
-		_refresh_slots()
-		_selected_slot = -1
-		_sub_panel.visible = false
+		_deselect()
 
 
 func _on_energy_changed(_val: float) -> void:
-	if _root_panel.visible and _selected_slot >= 0:
-		_show_sub_menu(_selected_slot)
+	_refresh_affordability()
+
+
+## A slot's contents changed elsewhere (e.g. another player built/upgraded it
+## over the network) — keep the panel in sync if it's the one being viewed.
+func _on_module_slots_changed(slot_index: int) -> void:
+	if slot_index == _selected_slot and _panel.visible:
+		_rebuild_panel_contents()
 
 
 func _update_visibility() -> void:
 	var show := GameState.phase == GameState.Phase.BUILD or GameState.phase == GameState.Phase.UPGRADE
-	if _root_panel:
-		_root_panel.visible = show
-	# Overlay visibility follows panel
-	if get_child_count() > 0:
-		get_child(0).visible = show
+	_hint_label.visible = show and _selected_slot < 0
+	if not show:
+		_panel.visible = false

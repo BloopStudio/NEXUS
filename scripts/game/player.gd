@@ -34,10 +34,10 @@ func _process(delta: float) -> void:
 func _physics_process(delta: float) -> void:
 	# WASD / Arrow keys movement
 	var dir := Vector2.ZERO
-	if Input.is_action_pressed("ui_right"): dir.x += 1
-	if Input.is_action_pressed("ui_left"):  dir.x -= 1
-	if Input.is_action_pressed("ui_down"):  dir.y += 1
-	if Input.is_action_pressed("ui_up"):    dir.y -= 1
+	if Input.is_action_pressed("move_right"): dir.x += 1
+	if Input.is_action_pressed("move_left"):  dir.x -= 1
+	if Input.is_action_pressed("move_down"):  dir.y += 1
+	if Input.is_action_pressed("move_up"):    dir.y -= 1
 	if dir != Vector2.ZERO:
 		dir = dir.normalized()
 		var new_pos := global_position + dir * SPEED * delta
@@ -45,8 +45,8 @@ func _physics_process(delta: float) -> void:
 		new_pos = new_pos.clamp(Vector2(-420, -420), Vector2(420, 420))
 		_move_rpc.rpc(new_pos)
 
-	# Left-click to shoot
-	if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and _shoot_timer <= 0.0:
+	# Shoot (default: left click, rebindable in Settings)
+	if Input.is_action_pressed("shoot") and _shoot_timer <= 0.0:
 		_shoot_timer = SHOOT_COOLDOWN
 		var target := get_global_mouse_position()
 		_shoot_rpc.rpc(target)

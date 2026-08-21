@@ -99,6 +99,10 @@ func _build_ui() -> void:
 	btn_solo.pressed.connect(_on_solo_pressed)
 	center.add_child(btn_solo)
 
+	var btn_settings := _make_button("⚙  Réglages")
+	btn_settings.pressed.connect(_on_settings_pressed)
+	center.add_child(btn_settings)
+
 	_spacer(center, 8)
 
 	# ── Party code display (host) ──
@@ -191,7 +195,15 @@ func _on_solo_pressed() -> void:
 	_apply_player_name()
 	NetworkManager.host_game()
 	GameState.reset()
-	get_tree().change_scene_to_file("res://scenes/game.tscn")
+	SceneLoader.change_scene("res://scenes/game.tscn")
+
+
+func _on_settings_pressed() -> void:
+	AudioManager.play_sfx(AudioManager.SFX.UI_CLICK)
+	var settings_script = load("res://scripts/ui/settings_menu.gd")
+	var settings: Control = settings_script.new()
+	settings.closed.connect(func(): settings.queue_free())
+	add_child(settings)
 
 
 func _on_start_pressed() -> void:
@@ -224,7 +236,7 @@ func _on_connection_failed() -> void:
 # ─── Helpers ───────────────────────────────────────────────────────────────────
 func _start_game() -> void:
 	GameState.reset()
-	get_tree().change_scene_to_file("res://scenes/game.tscn")
+	SceneLoader.change_scene("res://scenes/game.tscn")
 
 
 func _apply_player_name() -> void:
@@ -245,6 +257,7 @@ func _make_button(text: String) -> Button:
 	btn.custom_minimum_size = Vector2(380, 48)
 	btn.add_theme_font_size_override("font_size", 16)
 	btn.add_theme_color_override("font_color", C_TEXT)
+	btn.pressed.connect(func(): AudioManager.play_sfx(AudioManager.SFX.UI_CLICK))
 	return btn
 
 

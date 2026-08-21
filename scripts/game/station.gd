@@ -30,6 +30,10 @@ var _hovered_slot: int = -1
 # Auto-firing for Turret modules
 var _turret_timers: Array[float] = []
 
+# Muzzle flash: slot_index -> {"target": Vector2, "t": float}
+var _flashes: Dictionary = {}
+const FLASH_DURATION := 0.09
+
 signal slot_clicked(slot_index: int)
 
 func _ready() -> void:
@@ -43,6 +47,20 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_update_turrets(delta)
+	_update_flashes(delta)
+
+
+func _update_flashes(delta: float) -> void:
+	if _flashes.is_empty():
+		return
+	var expired := []
+	for slot_index in _flashes:
+		_flashes[slot_index]["t"] -= delta
+		if _flashes[slot_index]["t"] <= 0.0:
+			expired.append(slot_index)
+	for slot_index in expired:
+		_flashes.erase(slot_index)
+	queue_redraw()
 
 
 func _draw() -> void:
@@ -89,13 +107,25 @@ func _draw() -> void:
 		hex.append(Vector2(cos(a), sin(a)) * 20.0)
 	draw_polygon(hex, [core_col.darkened(0.2)])
 
+	# Turret muzzle flashes
+	for slot_index in _flashes:
+		var f: Dictionary = _flashes[slot_index]
+		var alpha: float = clampf(f["t"] / FLASH_DURATION, 0.0, 1.0)
+		var from: Vector2 = _slot_pos(slot_index)
+		draw_line(from, f["target"], Color(1.0, 0.85, 0.3, alpha), 2.0)
+		draw_circle(from, 6.0 * alpha, Color(1.0, 0.9, 0.5, alpha))
+
 
 func _input(event: InputEvent) -> void:
+	# Use get_global_mouse_position() (not the raw viewport-space event.position)
+	# so slot hit-testing accounts for the active Camera2D / viewport stretch.
 	if event is InputEventMouseMotion:
-		_hovered_slot = _get_slot_at(to_local(event.position))
-		queue_redraw()
+		var new_hover := _get_slot_at(to_local(get_global_mouse_position()))
+		if new_hover != _hovered_slot:
+			_hovered_slot = new_hover
+			queue_redraw()
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		var idx := _get_slot_at(to_local(event.position))
+		var idx := _get_slot_at(to_local(get_global_mouse_position()))
 		if idx >= 0:
 			slot_clicked.emit(idx)
 
@@ -136,8 +166,9 @@ func _fire_turret(slot_index: int) -> void:
 
 	var dmg := _turret_damage(GameState.module_slots[slot_index]["level"])
 	enemy.take_damage(dmg)
+	AudioManager.play_sfx(AudioManager.SFX.TURRET_SHOT, -10.0)
 
-	# Visual flash (draw a line — just queue_redraw for simplicity)
+	_flashes[slot_index] = {"target": to_local(enemy.global_position), "t": FLASH_DURATION}
 	queue_redraw()
 
 

@@ -13,12 +13,17 @@ var _players: Dictionary   = {}   # peer_id -> Player node
 var _notice_label: Label   = null
 var _notice_timer: float   = 0.0
 
+var _camera: Camera2D      = null
+var _shake_time: float     = 0.0
+var _shake_strength: float = 0.0
+var _last_station_hp: float = -1.0
+
 
 func _ready() -> void:
 	# Camera centered on origin
-	var cam := Camera2D.new()
-	cam.position = Vector2.ZERO
-	add_child(cam)
+	_camera = Camera2D.new()
+	_camera.position = Vector2.ZERO
+	add_child(_camera)
 
 	# HUD (CanvasLayer — always on top)
 	var hud_script = load("res://scripts/ui/hud.gd")
@@ -35,6 +40,7 @@ func _ready() -> void:
 	_station = station_script.new()
 	_station.position = Vector2.ZERO
 	add_child(_station)
+	_station.slot_clicked.connect(upgrade_menu.on_slot_clicked)
 
 	# Idle generator (child node, host-only logic inside)
 	var idle_script = load("res://scripts/game/idle_generator.gd")
@@ -68,6 +74,9 @@ func _ready() -> void:
 	# Connect game_over signal
 	GameState.game_over.connect(_on_game_over)
 
+	_last_station_hp = GameState.station_hp
+	GameState.station_health_changed.connect(_on_station_hp_changed)
+
 
 func _process(delta: float) -> void:
 	if _notice_timer > 0.0:
@@ -77,6 +86,28 @@ func _process(delta: float) -> void:
 		else:
 			# Fade out in last 0.5 s
 			_notice_label.modulate.a = clampf(_notice_timer / 0.5, 0.0, 1.0)
+
+	_update_camera_shake(delta)
+
+
+func _on_station_hp_changed(new_hp: float) -> void:
+	if new_hp < _last_station_hp:
+		_start_camera_shake(6.0, 0.25)
+	_last_station_hp = new_hp
+
+
+func _start_camera_shake(strength: float, duration: float) -> void:
+	_shake_strength = strength
+	_shake_time = duration
+
+
+func _update_camera_shake(delta: float) -> void:
+	if _shake_time <= 0.0:
+		_camera.offset = Vector2.ZERO
+		return
+	_shake_time -= delta
+	var falloff := clampf(_shake_time, 0.0, 1.0)
+	_camera.offset = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _shake_strength * falloff
 
 
 func _draw() -> void:
@@ -143,9 +174,10 @@ func _on_wave_cleared() -> void:
 
 
 func _on_game_over() -> void:
+	AudioManager.play_sfx(AudioManager.SFX.GAME_OVER)
 	await get_tree().create_timer(2.0).timeout
 	NetworkManager.disconnect_from_game()
-	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+	SceneLoader.change_scene("res://scenes/main_menu.tscn")
 
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────

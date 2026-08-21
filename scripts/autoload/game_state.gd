@@ -8,6 +8,7 @@ signal wave_changed(new_number: int)
 signal station_health_changed(new_hp: float)
 signal phase_changed(new_phase: Phase)
 signal game_over()
+signal module_slots_changed(slot_index: int)
 
 # ─── Enums ─────────────────────────────────────────────────────────────────────
 enum Phase { MENU, BUILD, WAVE, UPGRADE, GAME_OVER }
@@ -100,6 +101,7 @@ func build_module(slot_index: int, type: ModuleType) -> bool:
 	if not spend_energy(cost):
 		return false
 	module_slots[slot_index] = {"type": type, "level": 1}
+	module_slots_changed.emit(slot_index)
 	return true
 
 
@@ -111,6 +113,7 @@ func upgrade_module(slot_index: int) -> bool:
 	if not spend_energy(cost):
 		return false
 	module_slots[slot_index]["level"] += 1
+	module_slots_changed.emit(slot_index)
 	return true
 
 

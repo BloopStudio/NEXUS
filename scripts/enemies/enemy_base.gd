@@ -68,6 +68,7 @@ func take_damage(amount: float) -> void:
 	hp -= amount
 	_hit_flash = 0.12
 	queue_redraw()
+	AudioManager.play_sfx(AudioManager.SFX.ENEMY_HIT, -8.0)
 	if hp <= 0.0:
 		_die()
 
@@ -76,6 +77,7 @@ func _on_reach_station() -> void:
 	if not NetworkManager.is_host():
 		return
 	GameState.damage_station(contact_damage)
+	AudioManager.play_sfx(AudioManager.SFX.STATION_DAMAGE)
 	_die()
 
 
@@ -83,5 +85,34 @@ func _die() -> void:
 	if _dead:
 		return
 	_dead = true
+	AudioManager.play_sfx(AudioManager.SFX.ENEMY_DEATH, -4.0)
+	_spawn_death_burst()
 	died.emit(self, reward_energy)
 	queue_free()
+
+
+## Small one-shot particle burst matching the enemy's color, left behind
+## after this node is freed.
+func _spawn_death_burst() -> void:
+	var parent := get_parent()
+	if parent == null:
+		return
+	var particles := CPUParticles2D.new()
+	particles.global_position = global_position
+	particles.emitting = false
+	particles.one_shot = true
+	particles.amount = 14
+	particles.lifetime = 0.45
+	particles.explosiveness = 1.0
+	particles.direction = Vector2.ZERO
+	particles.spread = 180.0
+	particles.initial_velocity_min = 40.0
+	particles.initial_velocity_max = 120.0
+	particles.gravity = Vector2.ZERO
+	particles.scale_amount_min = 2.0
+	particles.scale_amount_max = 4.0
+	particles.color = color
+	parent.add_child(particles)
+	particles.emitting = true
+	var t := parent.get_tree().create_timer(particles.lifetime + 0.1)
+	t.timeout.connect(particles.queue_free)
