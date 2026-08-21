@@ -136,6 +136,7 @@ func _cast_spell_rpc(spell_id: String) -> void:
 				var dmg: float = def["damage"] * GameState.get_player_damage_multiplier()
 				for enemy in parent.get_enemies_in_radius(global_position, def["radius"]):
 					enemy.take_damage(dmg)
+					GameState.record_damage(dmg)
 		Spells.HEAL:
 			GameState.heal_station(def["amount"])
 		Spells.SLOW:
@@ -226,6 +227,7 @@ class _Bullet extends Node2D:
 			for enemy in get_tree().get_nodes_in_group("enemies"):
 				if not enemy.is_queued_for_deletion() and global_position.distance_to(enemy.global_position) < 16.0:
 					enemy.take_damage(damage)
+					GameState.record_damage(damage)
 					queue_free()
 					return
 		queue_redraw()

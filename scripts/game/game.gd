@@ -231,9 +231,84 @@ func _on_server_disconnected() -> void:
 
 func _on_game_over() -> void:
 	AudioManager.play_sfx(AudioManager.SFX.GAME_OVER)
-	await get_tree().create_timer(2.0).timeout
-	NetworkManager.disconnect_from_game()
-	SceneLoader.change_scene("res://scenes/main_menu.tscn")
+
+	# Local scoreboard only makes sense from the host's own machine — it's
+	# the only peer with an authoritative, trustworthy wave_number (clients
+	# just mirror the host's synced copy).
+	if NetworkManager.is_host():
+		ProfileStore.record_score(GameState.wave_number)
+
+	_show_game_over_stats()
+
+
+## Replaces the old "wait 2s then silently kick back to menu" behavior —
+## that was too fast to actually read anything. Shown on every peer; each
+## one returns to the menu independently when THEY dismiss it.
+func _show_game_over_stats() -> void:
+	var overlay := CanvasLayer.new()
+	overlay.layer = 40
+	add_child(overlay)
+
+	var bg := ColorRect.new()
+	bg.color = Color(0.02, 0.02, 0.04, 0.85)
+	bg.anchor_right = 1.0
+	bg.anchor_bottom = 1.0
+	overlay.add_child(bg)
+
+	var center := CenterContainer.new()
+	center.anchor_right = 1.0
+	center.anchor_bottom = 1.0
+	overlay.add_child(center)
+
+	var panel := PanelContainer.new()
+	center.add_child(panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 12)
+	vbox.custom_minimum_size = Vector2(380, 0)
+	panel.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "💀 Partie terminée"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 24)
+	title.add_theme_color_override("font_color", Color(1.0, 0.4, 0.3))
+	vbox.add_child(title)
+
+	var survival := GameState.get_survival_seconds()
+	var minutes := int(survival) / 60
+	var seconds := int(survival) % 60
+
+	for line in [
+		"🌊 Vague atteinte : %d" % GameState.wave_number,
+		"💥 Dégâts totaux infligés : %d" % int(GameState.total_damage_dealt),
+		"⏱ Temps de survie : %02d:%02d" % [minutes, seconds],
+	]:
+		var lbl := Label.new()
+		lbl.text = line
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.add_theme_font_size_override("font_size", 16)
+		vbox.add_child(lbl)
+
+	if NetworkManager.is_host():
+		var top: Array = ProfileStore.get_top_scores()
+		if not top.is_empty() and top[0].get("wave", 0) == GameState.wave_number:
+			var record_lbl := Label.new()
+			record_lbl.text = "🏆 Nouveau record local !"
+			record_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			record_lbl.add_theme_font_size_override("font_size", 14)
+			record_lbl.add_theme_color_override("font_color", Color(1.0, 0.85, 0.2))
+			vbox.add_child(record_lbl)
+
+	var continue_btn := Button.new()
+	continue_btn.text = "Retour au menu"
+	continue_btn.custom_minimum_size = Vector2(0, 44)
+	continue_btn.pressed.connect(func():
+		AudioManager.play_sfx(AudioManager.SFX.UI_CLICK)
+		NetworkManager.disconnect_from_game()
+		SceneLoader.change_scene("res://scenes/main_menu.tscn")
+	)
+	vbox.add_child(continue_btn)
 
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────

@@ -216,8 +216,9 @@ func _fire_turret(slot_index: int) -> void:
 	if enemy == null:
 		return
 
-	var dmg := _turret_damage(GameState.module_slots[slot_index]["level"])
+	var dmg := _turret_damage(GameState.module_slots[slot_index]["level"]) * GameState.get_skill_damage_multiplier()
 	enemy.take_damage(dmg)
+	GameState.record_damage(dmg)
 
 	_turret_flash_rpc.rpc(slot_index, to_local(enemy.global_position))
 
@@ -261,9 +262,10 @@ func _pulse_mine(slot_index: int, level: int) -> void:
 	var game := get_parent()
 	if game == null or not game.has_method("get_enemies_in_radius"):
 		return
-	var dmg := _mine_damage(level)
+	var dmg := _mine_damage(level) * GameState.get_skill_damage_multiplier()
 	for enemy in game.get_enemies_in_radius(global_position, MINE_RADIUS):
 		enemy.take_damage(dmg)
+		GameState.record_damage(dmg)
 	_mine_pulse_rpc.rpc(slot_index)
 
 

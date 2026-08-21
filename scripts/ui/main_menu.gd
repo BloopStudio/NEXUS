@@ -24,6 +24,8 @@ var _spell_slot_e: OptionButton
 var _spell_slot_a: OptionButton
 var _update_btn: Button
 var _update_url: String = ""
+var _scores_panel: PanelContainer
+var _scores_list: VBoxContainer
 
 # GitHub Releases API — no auth needed for a public repo's latest release.
 const UPDATE_CHECK_URL := "https://api.github.com/repos/BloopStudio/NEXUS/releases/latest"
@@ -100,7 +102,10 @@ func _build_ui() -> void:
 	_player_name_input = LineEdit.new()
 	_player_name_input.placeholder_text = "Joueur"
 	_player_name_input.custom_minimum_size = Vector2(180, 36)
-	_player_name_input.text = "Joueur%d" % randi_range(1, 99)
+	# Reuse the name from last time if one was saved, otherwise fall back to
+	# a random default like before.
+	_player_name_input.text = ProfileStore.player_name if not ProfileStore.player_name.is_empty() \
+		else "Joueur%d" % randi_range(1, 99)
 	name_row.add_child(_player_name_input)
 
 	_spacer(center, 8)
@@ -120,9 +125,13 @@ func _build_ui() -> void:
 	loadout_row.add_theme_constant_override("separation", 10)
 	center.add_child(loadout_row)
 
-	_spell_slot_e = _make_spell_dropdown("E : ", Spells.DEFAULT_LOADOUT[0])
+	# Reuse the loadout from last time if one was saved.
+	var saved_loadout: Array = ProfileStore.spell_loadout
+	var default_e: String = saved_loadout[0] if saved_loadout.size() == 2 else Spells.DEFAULT_LOADOUT[0]
+	var default_a: String = saved_loadout[1] if saved_loadout.size() == 2 else Spells.DEFAULT_LOADOUT[1]
+	_spell_slot_e = _make_spell_dropdown("E : ", default_e)
 	loadout_row.add_child(_spell_slot_e.get_parent())
-	_spell_slot_a = _make_spell_dropdown("A : ", Spells.DEFAULT_LOADOUT[1])
+	_spell_slot_a = _make_spell_dropdown("A : ", default_a)
 	loadout_row.add_child(_spell_slot_a.get_parent())
 
 	_spacer(center, 8)
@@ -144,7 +153,19 @@ func _build_ui() -> void:
 	btn_settings.pressed.connect(_on_settings_pressed)
 	center.add_child(btn_settings)
 
+	var btn_scores := _make_button("🏆  Classement local")
+	btn_scores.pressed.connect(_on_scores_pressed)
+	center.add_child(btn_scores)
+
 	_spacer(center, 8)
+
+	# ── Leaderboard panel (hidden until opened) ──
+	_scores_panel = PanelContainer.new()
+	_scores_panel.visible = false
+	center.add_child(_scores_panel)
+	_scores_list = VBoxContainer.new()
+	_scores_list.add_theme_constant_override("separation", 4)
+	_scores_panel.add_child(_scores_list)
 
 	# ── Party code display (host) ──
 	_party_code_panel = PanelContainer.new()
@@ -263,6 +284,42 @@ func _on_code_display_pressed() -> void:
 	_set_status("Code copié dans le presse-papiers !", C_SUCCESS)
 
 
+func _on_scores_pressed() -> void:
+	AudioManager.play_sfx(AudioManager.SFX.UI_CLICK)
+	_scores_panel.visible = not _scores_panel.visible
+	if not _scores_panel.visible:
+		return
+
+	for child in _scores_list.get_children():
+		child.queue_free()
+
+	var top: Array = ProfileStore.get_top_scores()
+	if top.is_empty():
+		var empty_lbl := Label.new()
+		empty_lbl.text = "Aucune partie hébergée pour l'instant."
+		empty_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		empty_lbl.add_theme_color_override("font_color", C_DIM)
+		empty_lbl.add_theme_font_size_override("font_size", 12)
+		_scores_list.add_child(empty_lbl)
+		return
+
+	var header := Label.new()
+	header.text = "Meilleures vagues atteintes (parties hébergées ici) :"
+	header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	header.add_theme_color_override("font_color", C_DIM)
+	header.add_theme_font_size_override("font_size", 12)
+	_scores_list.add_child(header)
+
+	for i in top.size():
+		var entry: Dictionary = top[i]
+		var row := Label.new()
+		row.text = "%d. %s — Vague %d (%s)" % [i + 1, entry.get("name", "?"), entry.get("wave", 0), entry.get("date", "")]
+		row.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		row.add_theme_font_size_override("font_size", 13)
+		row.add_theme_color_override("font_color", C_ACCENT if i == 0 else C_TEXT)
+		_scores_list.add_child(row)
+
+
 func _on_settings_pressed() -> void:
 	AudioManager.play_sfx(AudioManager.SFX.UI_CLICK)
 	var settings_script = load("res://scripts/ui/settings_menu.gd")
@@ -352,11 +409,13 @@ func _apply_player_name() -> void:
 	var n := _player_name_input.text.strip_edges()
 	if n.is_empty():
 		n = "Joueur"
-	NetworkManager.local_player_info["name"] = n
-	NetworkManager.local_player_info["spells"] = [
+	var spells: Array = [
 		_spell_slot_e.get_item_metadata(_spell_slot_e.selected),
 		_spell_slot_a.get_item_metadata(_spell_slot_a.selected),
 	]
+	NetworkManager.local_player_info["name"] = n
+	NetworkManager.local_player_info["spells"] = spells
+	ProfileStore.set_player_info(n, spells)
 
 
 ## Builds a "<label> [dropdown]" pair listing every spell — returns the

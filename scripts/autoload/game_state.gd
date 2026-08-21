@@ -9,6 +9,7 @@ signal station_health_changed(new_hp: float)
 signal phase_changed(new_phase: Phase)
 signal game_over()
 signal module_slots_changed(slot_index: int)
+signal skill_tree_changed()
 
 # ─── Enums ─────────────────────────────────────────────────────────────────────
 enum Phase { MENU, BUILD, WAVE, UPGRADE, GAME_OVER }
@@ -30,6 +31,33 @@ const MODULE_COSTS := {
 const BOOSTER_DAMAGE_BONUS_PER_LEVEL := 0.15  # +15% player bullet damage per level, per module
 const SHIELD_MAX_HP_BONUS_PER_LEVEL := 60.0   # +60 max station HP per level, per module
 const UPGRADE_COST_MULTIPLIER := 1.8  # cost *= multiplier per level
+
+# ─── Skill tree ────────────────────────────────────────────────────────────────
+# A real branching tree (replacing the old single repeatable "unlock slot"
+# button): 3 branches, 3 sequential tiers each — a tier must be bought in
+# order within its branch, but branches are independent of each other.
+# Costs are shared team energy, same as everything else.
+enum SkillBranch { DAMAGE, ECONOMY, DEFENSE }
+const SKILL_TREE := {
+	SkillBranch.DAMAGE: [
+		{"name": "Armement I",   "desc": "+10% dégâts (joueurs, tourelles, mines)", "cost": 90.0},
+		{"name": "Armement II",  "desc": "+10% dégâts supplémentaires (total +20%)", "cost": 200.0},
+		{"name": "Armement III", "desc": "+10% dégâts supplémentaires (total +30%)", "cost": 360.0},
+	],
+	SkillBranch.ECONOMY: [
+		{"name": "Commerce I",   "desc": "+10% énergie passive (générateurs)", "cost": 90.0},
+		{"name": "Commerce II",  "desc": "-10% coût de construction des modules", "cost": 200.0},
+		{"name": "Commerce III", "desc": "+15% remboursement à la destruction", "cost": 360.0},
+	],
+	SkillBranch.DEFENSE: [
+		{"name": "Fortification I",   "desc": "+15% vie max de la station", "cost": 90.0},
+		{"name": "Fortification II",  "desc": "+20% soin des modules Réparation", "cost": 200.0},
+		{"name": "Fortification III", "desc": "+15% vie max supplémentaire (total +30%)", "cost": 360.0},
+	],
+}
+const SKILL_BRANCH_NAMES := {
+	SkillBranch.DAMAGE: "⚔ Dégâts", SkillBranch.ECONOMY: "⚡ Économie", SkillBranch.DEFENSE: "🛡 Défense",
+}
 
 # ─── State ─────────────────────────────────────────────────────────────────────
 var phase: Phase = Phase.MENU
@@ -60,6 +88,28 @@ const STARTING_SLOTS := 8
 const MAX_SLOTS := 12
 const SLOT_UNLOCK_COSTS := [150.0, 220.0, 300.0, 400.0]  # cost of the 9th..12th slot
 
+# branch (int) -> tiers unlocked so far (0..3)
+var skill_tiers: Dictionary = {
+	SkillBranch.DAMAGE: 0, SkillBranch.ECONOMY: 0, SkillBranch.DEFENSE: 0,
+}
+
+# ─── End-of-match stats ─────────────────────────────────────────────────────────
+# Tracked for the post-game stats screen (see game.gd). Damage is recorded by
+# every peer's own local combat code as it happens (turrets/mines/bullets are
+# each simulated once, host-only — see station.gd/player.gd) and only the
+# host's copy matters, since it's what gets shown and saved to the scoreboard.
+var total_damage_dealt: float = 0.0
+var _match_start_msec: int = 0
+
+func record_damage(amount: float) -> void:
+	total_damage_dealt += amount
+
+
+func get_survival_seconds() -> float:
+	if _match_start_msec == 0:
+		return 0.0
+	return (Time.get_ticks_msec() - _match_start_msec) / 1000.0
+
 # ─── Init ──────────────────────────────────────────────────────────────────────
 func _ready() -> void:
 	_init_slots()
@@ -87,15 +137,21 @@ func _process(delta: float) -> void:
 func _broadcast_snapshot() -> void:
 	if not multiplayer.has_multiplayer_peer():
 		return
-	_apply_snapshot_rpc.rpc(energy, wave_number, station_hp, station_max_hp, int(phase), module_slots)
+	_apply_snapshot_rpc.rpc(energy, wave_number, station_hp, station_max_hp, int(phase), module_slots,
+		skill_tiers, total_damage_dealt)
 
 
 @rpc("authority", "reliable")
-func _apply_snapshot_rpc(e: float, w: int, hp: float, max_hp: float, ph: int, slots: Array) -> void:
+func _apply_snapshot_rpc(e: float, w: int, hp: float, max_hp: float, ph: int, slots: Array,
+		tiers: Dictionary, dmg_dealt: float) -> void:
 	station_max_hp = max_hp
 	wave_number = w
 	energy = e
 	station_hp = hp
+	total_damage_dealt = dmg_dealt
+	if tiers != skill_tiers:
+		skill_tiers = tiers
+		skill_tree_changed.emit()
 
 	# Only touch module_slots (and emit its signal) when something actually
 	# changed — this snapshot arrives ~7×/second, and module_slots_changed
@@ -197,6 +253,82 @@ func _request_unlock_slot_rpc() -> void:
 	unlock_slot()
 
 
+# ─── Skill tree ────────────────────────────────────────────────────────────────
+
+func get_skill_tier(branch: SkillBranch) -> int:
+	return skill_tiers.get(branch, 0)
+
+
+## Cost of the next tier in `branch`, or -1.0 if that branch is fully unlocked.
+func get_next_skill_cost(branch: SkillBranch) -> float:
+	var tier: int = get_skill_tier(branch)
+	var tiers: Array = SKILL_TREE[branch]
+	if tier >= tiers.size():
+		return -1.0
+	return tiers[tier]["cost"]
+
+
+func unlock_skill(branch: SkillBranch) -> bool:
+	var cost := get_next_skill_cost(branch)
+	if cost < 0.0 or not spend_energy(cost):
+		return false
+	skill_tiers[branch] = get_skill_tier(branch) + 1
+	_recompute_station_max_hp()
+	skill_tree_changed.emit()
+	return true
+
+
+func request_unlock_skill(branch: SkillBranch) -> void:
+	if NetworkManager.is_host():
+		unlock_skill(branch)
+	else:
+		_request_unlock_skill_rpc.rpc_id(1, int(branch))
+
+
+@rpc("any_peer", "reliable")
+func _request_unlock_skill_rpc(branch: int) -> void:
+	if not multiplayer.is_server():
+		return
+	unlock_skill(branch as SkillBranch)
+
+
+## +10% per DAMAGE tier, applied on top of BOOSTER modules — used for player
+## bullets/abilities, turret shots, and mine pulses alike.
+func get_skill_damage_multiplier() -> float:
+	return 1.0 + 0.10 * get_skill_tier(SkillBranch.DAMAGE)
+
+
+## +10% per ECONOMY tier-1-unlocked, applied to idle GENERATOR output.
+func get_skill_idle_multiplier() -> float:
+	return 1.0 + 0.10 * get_skill_tier(SkillBranch.ECONOMY)
+
+
+## -10% per ECONOMY tier-2-unlocked, applied to module build/upgrade costs.
+func get_skill_cost_multiplier() -> float:
+	return 1.0 - (0.10 if get_skill_tier(SkillBranch.ECONOMY) >= 2 else 0.0)
+
+
+## +15% destroy refund once ECONOMY tier 3 is unlocked (additive to the base ratio).
+func get_skill_refund_bonus() -> float:
+	return 0.15 if get_skill_tier(SkillBranch.ECONOMY) >= 3 else 0.0
+
+
+## +15%/+15% station max HP per DEFENSE tier 1/3 (tier 2 is the Repair buff below).
+func get_skill_max_hp_multiplier() -> float:
+	var tier: int = get_skill_tier(SkillBranch.DEFENSE)
+	var mult := 1.0
+	if tier >= 1:
+		mult += 0.15
+	if tier >= 3:
+		mult += 0.15
+	return mult
+
+
+## +20% REPAIR module healing once DEFENSE tier 2 is unlocked.
+func get_skill_repair_multiplier() -> float:
+	return 1.2 if get_skill_tier(SkillBranch.DEFENSE) >= 2 else 1.0
+
+
 # ─── Phase management ──────────────────────────────────────────────────────────
 func set_phase(new_phase: Phase) -> void:
 	phase = new_phase
@@ -221,7 +353,7 @@ func add_energy(amount: float) -> void:
 
 # ─── Module helpers ────────────────────────────────────────────────────────────
 func get_module_build_cost(type: ModuleType) -> float:
-	return MODULE_COSTS.get(type, 999.0)
+	return MODULE_COSTS.get(type, 999.0) * get_skill_cost_multiplier()
 
 
 func get_module_upgrade_cost(slot_index: int) -> float:
@@ -229,7 +361,7 @@ func get_module_upgrade_cost(slot_index: int) -> float:
 	if slot["type"] == ModuleType.EMPTY:
 		return 0.0
 	var base: float = MODULE_COSTS.get(slot["type"], 0.0)
-	return base * pow(UPGRADE_COST_MULTIPLIER, slot["level"])
+	return base * pow(UPGRADE_COST_MULTIPLIER, slot["level"]) * get_skill_cost_multiplier()
 
 
 func build_module(slot_index: int, type: ModuleType) -> bool:
@@ -275,7 +407,7 @@ func destroy_module(slot_index: int) -> bool:
 		return false
 	var invested := get_module_total_invested(slot["type"], slot["level"])
 	module_slots[slot_index] = {"type": ModuleType.EMPTY, "level": 0}
-	add_energy(invested * DESTROY_REFUND_RATIO)
+	add_energy(invested * (DESTROY_REFUND_RATIO + get_skill_refund_bonus()))
 	_recompute_station_max_hp()
 	module_slots_changed.emit(slot_index)
 	return true
@@ -302,7 +434,7 @@ func _recompute_station_max_hp() -> void:
 	for slot in module_slots:
 		if slot["type"] == ModuleType.SHIELD:
 			bonus += SHIELD_MAX_HP_BONUS_PER_LEVEL * slot["level"]
-	var new_max := 500.0 + bonus
+	var new_max := (500.0 + bonus) * get_skill_max_hp_multiplier()
 	if new_max != station_max_hp:
 		station_max_hp = new_max
 		station_hp = station_hp  # re-run the setter so it re-clamps against the new max
@@ -315,7 +447,7 @@ func get_player_damage_multiplier() -> float:
 	for slot in module_slots:
 		if slot["type"] == ModuleType.BOOSTER:
 			mult += BOOSTER_DAMAGE_BONUS_PER_LEVEL * slot["level"]
-	return mult
+	return mult * get_skill_damage_multiplier()
 
 
 # ─── Station ───────────────────────────────────────────────────────────────────
@@ -333,6 +465,9 @@ func reset() -> void:
 	wave_number = 0
 	station_max_hp = 500.0
 	station_hp = 500.0
+	skill_tiers = {SkillBranch.DAMAGE: 0, SkillBranch.ECONOMY: 0, SkillBranch.DEFENSE: 0}
+	total_damage_dealt = 0.0
+	_match_start_msec = Time.get_ticks_msec()
 	_init_slots()
 	set_phase(Phase.BUILD)
 

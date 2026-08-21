@@ -32,7 +32,11 @@ const MODULE_EFFECTS := {
 }
 
 var _hint_label: Label = null
-var _skill_btn: Button = null
+var _skill_tree_btn: Button = null
+var _skill_tree_panel: PanelContainer = null
+var _slot_unlock_btn: Button = null
+# branch (GameState.SkillBranch) -> Array[Button], one per tier (3 each)
+var _skill_tier_buttons: Dictionary = {}
 
 var _panel: PanelContainer = null
 var _panel_title: Label    = null
@@ -53,6 +57,7 @@ func _ready() -> void:
 	GameState.phase_changed.connect(_on_phase_changed)
 	GameState.energy_changed.connect(_on_energy_changed)
 	GameState.module_slots_changed.connect(_on_module_slots_changed)
+	GameState.skill_tree_changed.connect(_on_skill_tree_changed)
 	_update_visibility()
 
 
@@ -73,12 +78,11 @@ func _build_ui() -> void:
 	_hint_label.add_theme_color_override("font_color", C_DIM)
 	add_child(_hint_label)
 
-	# Skill tree: unlock extra station slots (top-left, under the HUD's
-	# energy panel). Always visible during BUILD/UPGRADE, one click each.
-	# Wrapped in its own visible panel — a bare Button here used to fully
-	# darken (via `modulate`) while unaffordable, which made it blend into
-	# the dark background almost completely and read as "not there" to
-	# players who hadn't saved up energy yet.
+	# Skill tree entry point (top-left, under the HUD's energy panel). Always
+	# visible during BUILD/UPGRADE. Wrapped in its own visible panel — a bare
+	# Button here used to fully darken (via `modulate`) while unaffordable,
+	# which made it blend into the dark background almost completely and read
+	# as "not there" to players who hadn't saved up energy yet.
 	var skill_panel := PanelContainer.new()
 	skill_panel.add_theme_stylebox_override("panel", _skill_panel_style())
 	skill_panel.anchor_left = 0.0
@@ -89,11 +93,14 @@ func _build_ui() -> void:
 	skill_panel.offset_bottom = 100.0
 	add_child(skill_panel)
 
-	_skill_btn = Button.new()
-	_skill_btn.flat = true
-	_skill_btn.add_theme_font_size_override("font_size", 13)
-	_skill_btn.pressed.connect(_on_skill_pressed)
-	skill_panel.add_child(_skill_btn)
+	_skill_tree_btn = Button.new()
+	_skill_tree_btn.flat = true
+	_skill_tree_btn.text = "🌳 Arbre de compétences"
+	_skill_tree_btn.add_theme_font_size_override("font_size", 13)
+	_skill_tree_btn.pressed.connect(_on_skill_tree_toggle_pressed)
+	skill_panel.add_child(_skill_tree_btn)
+
+	_build_skill_tree_panel()
 
 	# Contextual panel — anchored at the bottom so it never covers the station
 	# ring (which sits centered around the middle of the screen).
@@ -291,7 +298,7 @@ func _on_phase_changed(phase: GameState.Phase) -> void:
 
 func _on_energy_changed(_val: float) -> void:
 	_refresh_affordability()
-	_refresh_skill_button()
+	_refresh_skill_tree_panel()
 
 
 ## A slot's contents changed — either locally, another player built/upgraded
@@ -300,38 +307,162 @@ func _on_energy_changed(_val: float) -> void:
 func _on_module_slots_changed(slot_index: int) -> void:
 	if _panel.visible and (slot_index == _selected_slot or slot_index == -1):
 		_rebuild_panel_contents()
-	_refresh_skill_button()
+	_refresh_skill_tree_panel()
+
+
+func _on_skill_tree_changed() -> void:
+	_refresh_skill_tree_panel()
 
 
 func _update_visibility() -> void:
 	var show := GameState.phase == GameState.Phase.BUILD or GameState.phase == GameState.Phase.UPGRADE
 	_hint_label.visible = show and _selected_slot < 0
-	_skill_btn.visible = show
+	_skill_tree_btn.visible = show
 	if not show:
 		_panel.visible = false
-	_refresh_skill_button()
+		_skill_tree_panel.visible = false
+	_refresh_skill_tree_panel()
 
 
-# ─── Skill tree (extra station slots) ──────────────────────────────────────────
+# ─── Skill tree (branching: slots + Dégâts/Économie/Défense) ──────────────────
 
-func _on_skill_pressed() -> void:
+func _on_skill_tree_toggle_pressed() -> void:
+	AudioManager.play_sfx(AudioManager.SFX.UI_CLICK)
+	_skill_tree_panel.visible = not _skill_tree_panel.visible
+	if _skill_tree_panel.visible:
+		_panel.visible = false  # the two overlays would otherwise fight for space
+
+
+## Builds the skill tree overlay ONCE — same "never destroy/recreate on a
+## passive tick" rule as the build/upgrade panel (see _rebuild_panel_contents'
+## docstring): energy changes just update these SAME button instances.
+func _build_skill_tree_panel() -> void:
+	_skill_tree_panel = PanelContainer.new()
+	_skill_tree_panel.visible = false
+	_skill_tree_panel.add_theme_stylebox_override("panel", _skill_panel_style())
+	_skill_tree_panel.anchor_left = 0.5
+	_skill_tree_panel.anchor_right = 0.5
+	_skill_tree_panel.anchor_top = 0.5
+	_skill_tree_panel.anchor_bottom = 0.5
+	_skill_tree_panel.offset_left = -420.0
+	_skill_tree_panel.offset_right = 420.0
+	_skill_tree_panel.offset_top = -220.0
+	_skill_tree_panel.offset_bottom = 220.0
+	add_child(_skill_tree_panel)
+
+	var root_vbox := VBoxContainer.new()
+	root_vbox.add_theme_constant_override("separation", 12)
+	_skill_tree_panel.add_child(root_vbox)
+
+	var header := HBoxContainer.new()
+	root_vbox.add_child(header)
+	var title := Label.new()
+	title.text = "🌳 Arbre de compétences"
+	title.add_theme_font_size_override("font_size", 18)
+	title.add_theme_color_override("font_color", C_ACCENT)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+	var close_btn := Button.new()
+	close_btn.text = "✕"
+	close_btn.custom_minimum_size = Vector2(32, 32)
+	close_btn.pressed.connect(func(): _skill_tree_panel.visible = false)
+	header.add_child(close_btn)
+
+	# Slot unlock — kept as its own row above the branches, same mechanic as
+	# before (repeatable, increasing cost), just relocated into this panel.
+	_slot_unlock_btn = Button.new()
+	_slot_unlock_btn.custom_minimum_size = Vector2(0, 40)
+	_slot_unlock_btn.add_theme_font_size_override("font_size", 13)
+	_slot_unlock_btn.pressed.connect(_on_slot_unlock_pressed)
+	root_vbox.add_child(_slot_unlock_btn)
+
+	var branches_row := HBoxContainer.new()
+	branches_row.add_theme_constant_override("separation", 14)
+	branches_row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	root_vbox.add_child(branches_row)
+
+	for branch in [GameState.SkillBranch.DAMAGE, GameState.SkillBranch.ECONOMY, GameState.SkillBranch.DEFENSE]:
+		branches_row.add_child(_build_branch_column(branch))
+
+
+func _build_branch_column(branch: GameState.SkillBranch) -> VBoxContainer:
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 8)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	var col_title := Label.new()
+	col_title.text = GameState.SKILL_BRANCH_NAMES[branch]
+	col_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col_title.add_theme_font_size_override("font_size", 15)
+	col_title.add_theme_color_override("font_color", C_ACCENT)
+	col.add_child(col_title)
+
+	var tier_buttons: Array[Button] = []
+	var tiers: Array = GameState.SKILL_TREE[branch]
+	for tier_index in tiers.size():
+		var tier_def: Dictionary = tiers[tier_index]
+		var btn := Button.new()
+		btn.custom_minimum_size = Vector2(0, 56)
+		btn.add_theme_font_size_override("font_size", 11)
+		var captured_branch: GameState.SkillBranch = branch
+		var captured_tier: int = tier_index
+		btn.pressed.connect(func(): _on_skill_tier_pressed(captured_branch, captured_tier))
+		col.add_child(btn)
+		tier_buttons.append(btn)
+	_skill_tier_buttons[branch] = tier_buttons
+
+	return col
+
+
+func _on_slot_unlock_pressed() -> void:
 	AudioManager.play_sfx(AudioManager.SFX.UI_CLICK)
 	GameState.request_unlock_slot()
 
 
-func _refresh_skill_button() -> void:
-	var cost := GameState.get_next_slot_unlock_cost()
-	if cost < 0.0:
-		_skill_btn.text = "🌳 Emplacements au maximum"
-		_skill_btn.disabled = true
-		_skill_btn.add_theme_color_override("font_color", C_DIM)
-		return
-	var can := GameState.can_afford(cost)
-	_skill_btn.text = "🌳 Arbre de compétences : nouvel emplacement — %d ⚡" % int(cost)
-	_skill_btn.disabled = not can
-	# Only the text dims when unaffordable — the panel itself (background,
-	# border) stays fully visible so the feature is always discoverable.
-	_skill_btn.add_theme_color_override("font_color", C_WHITE if can else C_DIM)
+func _on_skill_tier_pressed(branch: GameState.SkillBranch, tier_index: int) -> void:
+	if tier_index != GameState.get_skill_tier(branch):
+		return  # not the next tier in this branch — ignore (button should be disabled anyway)
+	AudioManager.play_sfx(AudioManager.SFX.UPGRADE)
+	GameState.request_unlock_skill(branch)
+
+
+func _refresh_skill_tree_panel() -> void:
+	# Top-left toggle button
+	_skill_tree_btn.disabled = false
+	_skill_tree_btn.add_theme_color_override("font_color", C_WHITE)
+
+	# Slot unlock row
+	var slot_cost := GameState.get_next_slot_unlock_cost()
+	if slot_cost < 0.0:
+		_slot_unlock_btn.text = "➕ Emplacements au maximum"
+		_slot_unlock_btn.disabled = true
+	else:
+		var can_slot := GameState.can_afford(slot_cost)
+		_slot_unlock_btn.text = "➕ Nouvel emplacement (%d/%d) — %d ⚡" % [
+			GameState.module_slots.size(), GameState.MAX_SLOTS, int(slot_cost)]
+		_slot_unlock_btn.disabled = not can_slot
+
+	# Branch tier buttons
+	for branch in _skill_tier_buttons:
+		var tiers: Array = GameState.SKILL_TREE[branch]
+		var unlocked: int = GameState.get_skill_tier(branch)
+		var buttons: Array[Button] = _skill_tier_buttons[branch]
+		for i in buttons.size():
+			var btn := buttons[i]
+			var tier_def: Dictionary = tiers[i]
+			if i < unlocked:
+				btn.text = "✅ %s\n%s" % [tier_def["name"], tier_def["desc"]]
+				btn.disabled = true
+				btn.modulate = Color(0.6, 1.0, 0.7)
+			elif i == unlocked:
+				var can := GameState.can_afford(tier_def["cost"])
+				btn.text = "%s\n%s\n%d ⚡" % [tier_def["name"], tier_def["desc"], int(tier_def["cost"])]
+				btn.disabled = not can
+				btn.modulate = Color.WHITE if can else Color(0.6, 0.6, 0.65)
+			else:
+				btn.text = "🔒 %s" % tier_def["name"]
+				btn.disabled = true
+				btn.modulate = Color(0.4, 0.4, 0.45)
 
 
 func _skill_panel_style() -> StyleBoxFlat:

@@ -259,7 +259,7 @@ func _wave_cleared() -> void:
 func _apply_repair_regen() -> void:
 	for slot in GameState.module_slots:
 		if slot["type"] == GameState.ModuleType.REPAIR:
-			var regen: float = 20.0 + float(slot["level"]) * 15.0
+			var regen: float = (20.0 + float(slot["level"]) * 15.0) * GameState.get_skill_repair_multiplier()
 			GameState.heal_station(regen)
 
 

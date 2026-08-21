@@ -27,8 +27,18 @@ Jeu de survie/vagues/gestion multijoueur — défendez votre station ensemble.
 ### Station
 La station centrale est votre objectif. Si sa vie tombe à 0, c'est game over.
 Elle dispose de **8 emplacements** pour les modules, extensibles jusqu'à
-**12** via l'arbre de compétences (bouton 🌳 en haut à gauche pendant la
-phase de construction, coût en énergie croissant).
+**12** via le bouton 🌳 en haut à gauche pendant la phase de construction,
+qui ouvre l'arbre de compétences complet : en plus des emplacements
+supplémentaires (coût en énergie croissant), 3 branches indépendantes de
+bonus permanents à 3 paliers chacune, payées avec l'énergie de l'équipe :
+
+| Branche | Palier 1 | Palier 2 | Palier 3 |
+|---|---|---|---|
+| ⚔ Dégâts | +10% dégâts (joueurs/tourelles/mines) | +10% supplémentaires (total +20%) | +10% supplémentaires (total +30%) |
+| ⚡ Économie | +10% énergie passive | -10% coût de construction | +15% remboursement à la destruction |
+| 🛡 Défense | +15% vie max station | +20% soin des modules Réparation | +15% vie max supplémentaire (total +30%) |
+
+Les paliers d'une branche se débloquent dans l'ordre.
 
 ### Modules
 | Module | Effet |
@@ -73,6 +83,16 @@ Entre chaque vague : phase de construction pour améliorer la station.
 | Tank | Hexagone violet | Lent, très résistant |
 | Ranged (dès la vague 3) | Diamant magenta | Garde ses distances et tire sur la station |
 | Splitter (dès la vague 5) | Pentagone jaune | Se scinde en 2 Fast à sa mort |
+
+### Profil local, classement et statistiques
+Le pseudo et les sorts choisis dans le menu principal sont mémorisés
+localement (`user://profile.json`) — pas besoin de les ressaisir à chaque
+lancement. Un bouton 🏆 **Classement local** sur le menu principal affiche le
+top 10 des meilleures vagues atteintes lors des parties **hébergées** depuis
+cette machine (les scores en tant qu'invité d'une partie ne sont pas
+enregistrés — seul l'hôte a une source fiable du numéro de vague). À la fin
+d'une partie, un écran de statistiques (vague atteinte, dégâts totaux
+infligés, temps de survie) s'affiche avant le retour au menu.
 
 ## Build
 

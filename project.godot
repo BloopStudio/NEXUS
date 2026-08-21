@@ -25,6 +25,7 @@ FpsCounter="*res://scripts/autoload/fps_counter.gd"
 SettingsManager="*res://scripts/autoload/settings_manager.gd"
 AudioManager="*res://scripts/autoload/audio_manager.gd"
 SceneLoader="*res://scripts/autoload/scene_loader.gd"
+ProfileStore="*res://scripts/autoload/profile_store.gd"
 
 [display]
 
