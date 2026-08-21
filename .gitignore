@@ -1,0 +1,9 @@
+# Godot 4 editor cache/import files
+.godot/
+.import/
+*.import
+
+# Build/export output
+build/
+export.exe
+export.pck

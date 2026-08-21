@@ -153,7 +153,7 @@ func _show_sub_menu(idx: int) -> void:
 			b.disabled = not can
 			if not can:
 				b.modulate = C_DISABLED
-			var captured_t := t
+			var captured_t: GameState.ModuleType = t
 			b.pressed.connect(func(): _build(idx, captured_t))
 			row.add_child(b)
 	else:

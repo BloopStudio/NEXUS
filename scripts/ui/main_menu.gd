@@ -25,6 +25,7 @@ func _ready() -> void:
 	_build_ui()
 	NetworkManager.connection_succeeded.connect(_on_connection_succeeded)
 	NetworkManager.connection_failed.connect(_on_connection_failed)
+	NetworkManager.upnp_status.connect(_on_upnp_status)
 
 
 # ─── UI builder ────────────────────────────────────────────────────────────────
@@ -137,7 +138,7 @@ func _build_ui() -> void:
 	join_vbox.add_child(_code_input)
 
 	var note := Label.new()
-	note.text = "⚠  Sur internet : l'hôte doit ouvrir le port UDP 7777\n    ou remplacer son IP locale par son IP publique."
+	note.text = "ℹ  Le code fourni par l'hôte suffit — aucune manip réseau\n    n'est nécessaire dans la grande majorité des cas."
 	note.add_theme_color_override("font_color", C_DIM)
 	note.add_theme_font_size_override("font_size", 12)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD
@@ -167,7 +168,18 @@ func _on_host_pressed() -> void:
 	_code_display.text = code
 	_party_code_panel.visible = true
 	_join_panel.visible = false
-	_set_status("En attente de joueurs…", C_ACCENT)
+	_set_status("Ouverture automatique du port…", C_DIM)
+
+
+func _on_upnp_status(success: bool) -> void:
+	if not _party_code_panel.visible:
+		return
+	# The public IP may only be known once UPnP finishes — refresh the code.
+	_code_display.text = NetworkManager.get_party_code()
+	if success:
+		_set_status("Prêt ! Partage juste le code — aucune manip requise.", C_SUCCESS)
+	else:
+		_set_status("Routeur incompatible UPnP : le code ne marchera qu'en réseau local, sauf si tu ouvres le port 7777 (UDP) toi-même.", C_ERROR)
 
 
 func _on_join_pressed() -> void:

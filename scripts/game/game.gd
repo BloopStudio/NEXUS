@@ -22,12 +22,12 @@ func _ready() -> void:
 
 	# HUD (CanvasLayer — always on top)
 	var hud_script = load("res://scripts/ui/hud.gd")
-	var hud := hud_script.new()
+	var hud: Node = hud_script.new()
 	add_child(hud)
 
 	# Upgrade menu (CanvasLayer — shown during UPGRADE phase)
 	var upgrade_script = load("res://scripts/ui/upgrade_menu.gd")
-	var upgrade_menu := upgrade_script.new()
+	var upgrade_menu: Node = upgrade_script.new()
 	add_child(upgrade_menu)
 
 	# Station at center
@@ -38,7 +38,7 @@ func _ready() -> void:
 
 	# Idle generator (child node, host-only logic inside)
 	var idle_script = load("res://scripts/game/idle_generator.gd")
-	var idle_gen := idle_script.new()
+	var idle_gen: Node = idle_script.new()
 	add_child(idle_gen)
 
 	# Wave manager

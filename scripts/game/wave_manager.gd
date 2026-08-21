@@ -91,7 +91,7 @@ func _spawn_next() -> void:
 	if _spawn_queue.is_empty() or station_node == null:
 		return
 
-	var type := _spawn_queue.pop_front()
+	var type: String = _spawn_queue.pop_front()
 	var enemy: Node2D
 
 	match type:
@@ -127,7 +127,7 @@ func _wave_cleared() -> void:
 func _apply_shield_regen() -> void:
 	for slot in GameState.module_slots:
 		if slot["type"] == GameState.ModuleType.SHIELD:
-			var regen := 20.0 + slot["level"] * 15.0
+			var regen: float = 20.0 + float(slot["level"]) * 15.0
 			GameState.heal_station(regen)
 
 

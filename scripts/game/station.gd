@@ -59,7 +59,7 @@ func _draw() -> void:
 		var pos := _slot_pos(i)
 		var slot := GameState.module_slots[i]
 		var mtype: int = slot["type"]
-		var col := MODULE_COLORS.get(mtype, C_SLOT_EMPTY)
+		var col: Color = MODULE_COLORS.get(mtype, C_SLOT_EMPTY)
 		var is_hover := (i == _hovered_slot)
 
 		if is_hover:
@@ -130,7 +130,7 @@ func _fire_turret(slot_index: int) -> void:
 	var game := get_parent()
 	if game == null or not game.has_method("get_nearest_enemy"):
 		return
-	var enemy := game.get_nearest_enemy(_slot_pos(slot_index))
+	var enemy: Node2D = game.get_nearest_enemy(_slot_pos(slot_index))
 	if enemy == null:
 		return
 

@@ -91,7 +91,7 @@ func get_module_upgrade_cost(slot_index: int) -> float:
 	var slot := module_slots[slot_index]
 	if slot["type"] == ModuleType.EMPTY:
 		return 0.0
-	var base := MODULE_COSTS.get(slot["type"], 0.0)
+	var base: float = MODULE_COSTS.get(slot["type"], 0.0)
 	return base * pow(UPGRADE_COST_MULTIPLIER, slot["level"])
 
 

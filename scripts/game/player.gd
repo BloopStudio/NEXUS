@@ -42,7 +42,7 @@ func _physics_process(delta: float) -> void:
 		dir = dir.normalized()
 		var new_pos := global_position + dir * SPEED * delta
 		# Keep within arena bounds
-		new_pos = new_pos.clampf(-420, 420)
+		new_pos = new_pos.clamp(Vector2(-420, -420), Vector2(420, 420))
 		_move_rpc.rpc(new_pos)
 
 	# Left-click to shoot

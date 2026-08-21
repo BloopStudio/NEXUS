@@ -1,21 +1,34 @@
 ## NetworkManager — Autoload singleton
 ## Handles all P2P networking via ENet (no dedicated server needed).
 ## Party code = Base64 of "ip:port" — host shares it, guests decode and connect.
+## The host's port is opened automatically via UPnP when possible, so most
+## players never need to touch their router settings.
 extends Node
 
 const DEFAULT_PORT := 7777
 const MAX_PLAYERS := 4
+const UPNP_DISCOVER_TIMEOUT_MS := 3000
 
 signal player_connected(peer_id: int)
 signal player_disconnected(peer_id: int)
 signal connection_failed()
 signal connection_succeeded()
 signal server_disconnected()
+## Emitted after host_game() once UPnP port mapping has been attempted.
+## success = true if the port was opened automatically (internet play should
+## just work from a code); false means UPnP wasn't available and the party
+## code will likely only work for players on the same local network, or the
+## host will need to forward the port manually.
+signal upnp_status(success: bool)
 
 # Local player info sent to peers on join
 var local_player_info := {"name": "Player", "color": Color.CYAN}
 # All players: peer_id -> info dict
 var players := {}
+
+var _upnp: UPNP
+var _upnp_port: int = -1
+var _upnp_mapped_public_ip: String = ""
 
 
 # ─── Hosting ───────────────────────────────────────────────────────────────────
@@ -33,14 +46,54 @@ func host_game(port: int = DEFAULT_PORT) -> Error:
 
 	# Register host as player 1
 	players[1] = local_player_info.duplicate()
+
+	_try_setup_upnp(port)
 	return OK
 
 
+## Attempts to open the port automatically on the host's router via UPnP/IGD.
+## Runs in the background; connect to `upnp_status` to know the outcome.
+## Zero external server involved — this only talks to the local router.
+func _try_setup_upnp(port: int) -> void:
+	_upnp = UPNP.new()
+	var discover_result := _upnp.discover(UPNP_DISCOVER_TIMEOUT_MS)
+	if discover_result != UPNP.UPNP_RESULT_SUCCESS:
+		push_warning("NetworkManager: UPnP discovery failed (%d) — router may not support UPnP or it's disabled." % discover_result)
+		upnp_status.emit(false)
+		return
+
+	if _upnp.get_gateway() == null or not _upnp.get_gateway().is_valid_gateway():
+		push_warning("NetworkManager: no valid UPnP gateway found on the network.")
+		upnp_status.emit(false)
+		return
+
+	# Clean up any stale mapping from a previous session first.
+	_upnp.delete_port_mapping(port, "UDP")
+
+	var map_result := _upnp.add_port_mapping(port, port, "NEXUS", "UDP", 0)
+	if map_result != UPNP.UPNP_RESULT_SUCCESS:
+		push_warning("NetworkManager: UPnP port mapping failed (%d)." % map_result)
+		upnp_status.emit(false)
+		return
+
+	_upnp_port = port
+	_upnp_mapped_public_ip = _upnp.query_external_address()
+	upnp_status.emit(true)
+
+
+## Returns the public IP UPnP reported for the current port mapping, or an
+## empty string if UPnP mapping wasn't successful.
+func get_upnp_public_ip() -> String:
+	return _upnp_mapped_public_ip
+
+
 ## Returns the party code (Base64 of "ip:port") the host shares with friends.
-## Shows both LAN IP and asks user to replace with public IP for internet play.
+## Uses the UPnP-mapped public IP when available (works over the internet
+## with zero router configuration); falls back to the LAN IP otherwise,
+## which only works for players on the same local network.
 func get_party_code(port: int = DEFAULT_PORT) -> String:
-	var local_ip := _get_local_ip()
-	var raw := "%s:%d" % [local_ip, port]
+	var ip := _upnp_mapped_public_ip if not _upnp_mapped_public_ip.is_empty() else _get_local_ip()
+	var raw := "%s:%d" % [ip, port]
 	return Marshalls.utf8_to_base64(raw)
 
 
@@ -90,6 +143,15 @@ func disconnect_from_game() -> void:
 		multiplayer.multiplayer_peer = null
 	players.clear()
 	_disconnect_signals()
+	_teardown_upnp()
+
+
+func _teardown_upnp() -> void:
+	if _upnp != null and _upnp_port != -1:
+		_upnp.delete_port_mapping(_upnp_port, "UDP")
+	_upnp = null
+	_upnp_port = -1
+	_upnp_mapped_public_ip = ""
 
 
 # ─── RPCs ──────────────────────────────────────────────────────────────────────
