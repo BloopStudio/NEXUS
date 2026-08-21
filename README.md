@@ -15,7 +15,7 @@ Jeu de survie/vagues/gestion multijoueur — défendez votre station ensemble.
 3. Partage-le à tes amis
 4. Clique "Démarrer la partie"
 
-> ⚠️ Pour jouer sur Internet (pas en LAN), l'hôte doit **ouvrir le port UDP 7777** sur son routeur, ou utiliser son IP publique dans le code.
+> ℹ️ Le port UDP de l'hôte s'ouvre **automatiquement via UPnP** — dans la grande majorité des cas, aucune configuration du routeur n'est nécessaire. Si le routeur de l'hôte ne supporte pas l'UPnP (ou qu'il est désactivé), le jeu l'indique et le code de partie ne fonctionnera qu'en réseau local, sauf à ouvrir le port UDP 7777 manuellement.
 
 ### Rejoindre une partie
 1. Lance le jeu → "Rejoindre avec un code"
@@ -51,6 +51,12 @@ Entre chaque vague : phase de construction pour améliorer la station.
 
 ## Build
 
+### Télécharger un exécutable
+Les builds Windows/Linux/macOS sont publiés automatiquement dans les
+[Releases GitHub](../../releases) à chaque nouvelle version poussée sur `main`
+(numéro de version incrémenté automatiquement).
+
+### Compiler soi-même
 1. Installe [Godot 4.2+](https://godotengine.org/)
 2. Ouvre le projet dans Godot
 3. Project → Export pour compiler en .exe / .app / Linux

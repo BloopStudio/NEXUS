@@ -1,0 +1,89 @@
+name: Release
+
+# Builds Windows/Linux/macOS executables and publishes them as a GitHub
+# Release every time a change lands on main. The version number is derived
+# automatically from the commit count (0.1.<nb commits>) — nothing to bump
+# by hand, and no commit is pushed back to the repo.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+env:
+  GODOT_VERSION: "4.2.2"
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute version from commit count
+        id: version
+        run: |
+          set -euo pipefail
+          count=$(git rev-list --count HEAD)
+          version="0.1.${count}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+          echo "Version for this build: ${version}"
+
+      - name: Set version in project files
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          current=$(grep -oP '(?<=config/version=")[^"]+' project.godot)
+          sed -i "s/config\/version=\"$current\"/config\/version=\"$version\"/" project.godot
+          sed -i "s/application\/version=\"$current\"/application\/version=\"$version\"/" export_presets.cfg
+          sed -i "s/application\/short_version=\"$current\"/application\/short_version=\"$version\"/" export_presets.cfg
+
+      - name: Cache Godot editor + export templates
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /tmp/godot-editor
+            ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.stable
+          key: godot-${{ env.GODOT_VERSION }}
+
+      - name: Download Godot editor + export templates
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/godot-editor
+          curl -sSL -o /tmp/godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q /tmp/godot.zip -d /tmp/godot-editor
+
+          mkdir -p "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          curl -sSL -o /tmp/templates.tpz "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q /tmp/templates.tpz -d /tmp/templates
+          mv /tmp/templates/templates/* "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable/"
+
+      - name: Export Windows / Linux / macOS builds
+        run: |
+          set -euo pipefail
+          GODOT="/tmp/godot-editor/Godot_v${GODOT_VERSION}-stable_linux.x86_64"
+          chmod +x "$GODOT"
+
+          mkdir -p build/windows build/linux build/macos dist
+          "$GODOT" --headless --export-release "Windows Desktop" build/windows/NEXUS.exe .
+          "$GODOT" --headless --export-release "Linux" build/linux/NEXUS.x86_64 .
+          "$GODOT" --headless --export-release "macOS" build/macos/NEXUS.zip .
+          chmod +x build/linux/NEXUS.x86_64
+
+          version="${{ steps.version.outputs.version }}"
+          (cd build/windows && zip -rq "../../dist/NEXUS-${version}-windows.zip" .)
+          (cd build/linux && zip -rq "../../dist/NEXUS-${version}-linux.zip" .)
+          cp build/macos/NEXUS.zip "dist/NEXUS-${version}-macos.zip"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "NEXUS ${{ steps.version.outputs.tag }}"
+          generate_release_notes: true
+          files: dist/*
