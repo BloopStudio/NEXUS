@@ -258,6 +258,12 @@ func _pong_rpc(sent_at_msec: int) -> void:
 	if not players.has(sender):
 		return
 	players[sender]["ping_ms"] = Time.get_ticks_msec() - sent_at_msec
+	# _send_player_list.rpc() (below) only reaches OTHER peers — it isn't
+	# call_local, so without this the host's own `players` dict was updating
+	# correctly (assigned directly above) but its HUD never found out, since
+	# players_updated only fired for clients receiving the broadcast. The
+	# host's player list looked frozen on whatever ping it saw first.
+	players_updated.emit()
 	_send_player_list.rpc(players)
 
 

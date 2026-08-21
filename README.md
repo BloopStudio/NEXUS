@@ -59,7 +59,10 @@ Le HUD affiche les deux sorts équipés avec leur icône et le temps de
 recharge restant.
 
 ### Vagues
-Des vagues d'ennemis arrivent à intervalles réguliers.
+Des vagues d'ennemis arrivent à intervalles réguliers, de plus en plus
+nombreux ET de plus en plus forts (+9% de vie et de dégâts par vague,
+composé — la vague 10 fait environ 2,4× plus mal que la vague 1) : la
+difficulté ne vient pas juste du nombre.
 Entre chaque vague : phase de construction pour améliorer la station.
 
 ### Ennemis

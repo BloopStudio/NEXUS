@@ -22,6 +22,11 @@ var _join_panel: PanelContainer
 var _player_name_input: LineEdit
 var _spell_slot_e: OptionButton
 var _spell_slot_a: OptionButton
+var _update_btn: Button
+var _update_url: String = ""
+
+# GitHub Releases API — no auth needed for a public repo's latest release.
+const UPDATE_CHECK_URL := "https://api.github.com/repos/BloopStudio/NEXUS/releases/latest"
 
 func _ready() -> void:
 	_build_ui()
@@ -29,6 +34,7 @@ func _ready() -> void:
 	NetworkManager.connection_failed.connect(_on_connection_failed)
 	NetworkManager.upnp_status.connect(_on_upnp_status)
 	NetworkManager.game_starting.connect(_on_game_starting)
+	_check_for_update()
 
 
 # ─── UI builder ────────────────────────────────────────────────────────────────
@@ -201,6 +207,16 @@ func _build_ui() -> void:
 	_status_label.text = "BloopStudio — v%s" % game_version
 	center.add_child(_status_label)
 
+	# ── Update banner — hidden until a newer release is actually found ──
+	_update_btn = Button.new()
+	_update_btn.visible = false
+	_update_btn.flat = true
+	_update_btn.custom_minimum_size = Vector2(380, 32)
+	_update_btn.add_theme_font_size_override("font_size", 13)
+	_update_btn.add_theme_color_override("font_color", C_SUCCESS)
+	_update_btn.pressed.connect(_on_update_pressed)
+	center.add_child(_update_btn)
+
 
 # ─── Button callbacks ───────────────────────────────────────────────────────────
 func _on_host_pressed() -> void:
@@ -287,6 +303,46 @@ func _on_connection_failed() -> void:
 func _on_game_starting() -> void:
 	GameState.reset()
 	SceneLoader.change_scene("res://scenes/game.tscn")
+
+
+# ─── Update check ───────────────────────────────────────────────────────────────
+# NEXUS has no update server of its own (just GitHub Releases), so this can't
+# silently download-and-swap the running binary — instead it checks the
+# latest release on startup and, if it's newer, shows a button that opens the
+# download page in the browser. Versions are "0.1.<commit count>", so the
+# comparison is just the trailing number.
+
+func _check_for_update() -> void:
+	var http := HTTPRequest.new()
+	add_child(http)
+	http.request_completed.connect(_on_update_check_completed)
+	# Best-effort: a failed/offline check just leaves the banner hidden.
+	http.request(UPDATE_CHECK_URL, ["User-Agent: NEXUS-Game"])
+
+
+func _on_update_check_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
+		return
+	var parsed = JSON.parse_string(body.get_string_from_utf8())
+	if typeof(parsed) != TYPE_DICTIONARY or not parsed.has("tag_name"):
+		return
+
+	var latest_tag: String = parsed["tag_name"]  # e.g. "v0.1.42"
+	var latest_patch := latest_tag.trim_prefix("v").get_slice(".", 2) if latest_tag.count(".") >= 2 else ""
+	var current_version: String = ProjectSettings.get_setting("application/config/version", "0.0.0")
+	var current_patch := current_version.get_slice(".", 2) if current_version.count(".") >= 2 else ""
+	if not latest_patch.is_valid_int() or not current_patch.is_valid_int():
+		return
+
+	if latest_patch.to_int() > current_patch.to_int():
+		_update_url = parsed.get("html_url", "https://github.com/BloopStudio/NEXUS/releases/latest")
+		_update_btn.text = "⬇ Nouvelle version %s disponible — cliquer pour télécharger" % latest_tag
+		_update_btn.visible = true
+
+
+func _on_update_pressed() -> void:
+	if not _update_url.is_empty():
+		OS.shell_open(_update_url)
 
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────

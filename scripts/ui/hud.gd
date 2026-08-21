@@ -175,15 +175,27 @@ func _build_ui() -> void:
 		key_lbl.offset_top = -2.0
 		slot_stack.add_child(key_lbl)
 
-	# ── Top-right, below station HP: leave the match without quitting ────────
+	# ── Top-right, below station HP: settings + leave the match ──────────────
+	var settings_btn := Button.new()
+	settings_btn.text = "⚙ Réglages"
+	settings_btn.anchor_left = 1.0
+	settings_btn.anchor_right = 1.0
+	settings_btn.offset_left = -208.0
+	settings_btn.offset_right = -8.0
+	settings_btn.offset_top = 68.0
+	settings_btn.offset_bottom = 100.0
+	settings_btn.add_theme_font_size_override("font_size", 13)
+	settings_btn.pressed.connect(_on_settings_pressed)
+	add_child(settings_btn)
+
 	var quit_btn := Button.new()
 	quit_btn.text = "✕ Quitter"
 	quit_btn.anchor_left = 1.0
 	quit_btn.anchor_right = 1.0
 	quit_btn.offset_left = -208.0
 	quit_btn.offset_right = -8.0
-	quit_btn.offset_top = 68.0
-	quit_btn.offset_bottom = 100.0
+	quit_btn.offset_top = 104.0
+	quit_btn.offset_bottom = 136.0
 	quit_btn.add_theme_font_size_override("font_size", 13)
 	quit_btn.pressed.connect(_on_quit_pressed)
 	add_child(quit_btn)
@@ -287,6 +299,21 @@ func _refresh_player_list() -> void:
 
 		lbl.text = "● %s%s" % [info.get("name", "Player"), suffix]
 		_player_list.add_child(lbl)
+
+
+func _on_settings_pressed() -> void:
+	AudioManager.play_sfx(AudioManager.SFX.UI_CLICK)
+	# Settings is a plain Control, not its own CanvasLayer — added straight
+	# under the HUD (layer 10) it would render BEHIND the UpgradeMenu
+	# (layer 20) whenever that's open. A dedicated higher-layer wrapper
+	# guarantees it's always on top, in-game or from the main menu alike.
+	var overlay := CanvasLayer.new()
+	overlay.layer = 30
+	add_child(overlay)
+	var settings_script = load("res://scripts/ui/settings_menu.gd")
+	var settings: Control = settings_script.new()
+	settings.closed.connect(func(): overlay.queue_free())
+	overlay.add_child(settings)
 
 
 # ─── Leaving the match ──────────────────────────────────────────────────────────

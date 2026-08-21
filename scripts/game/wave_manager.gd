@@ -128,6 +128,14 @@ func _build_wave_queue(wave: int) -> Array[String]:
 	return q
 
 
+## +9% HP/damage per wave, compounding — wave 10 enemies hit ~2.4x as hard
+## and take ~2.4x as long to kill as wave 1's, on top of there being more of
+## them. Splitter children inherit their parent's wave via GameState.wave_number
+## (waves don't change mid-spawn), so they scale the same way.
+func _difficulty_multiplier(wave: int) -> float:
+	return pow(1.09, float(wave - 1))
+
+
 func _spawn_next() -> void:
 	if _spawn_queue.is_empty() or station_node == null:
 		return
@@ -170,7 +178,20 @@ func _spawn_enemy_rpc(id: int, type: String, spawn_pos: Vector2) -> void:
 	if NetworkManager.is_host():
 		enemy.died.connect(_on_enemy_died)
 
+	# Each subclass's _ready() (run by add_child, below) sets its base
+	# max_hp/contact_damage/speed — scaling has to happen AFTER that or
+	# _ready() just overwrites it back to the wave-1 values.
 	get_parent().add_child(enemy)
+
+	# Waves used to only get harder by throwing MORE enemies at the station —
+	# each individual enemy stayed exactly as strong on wave 20 as on wave 1,
+	# so once a station out-built the spawn rate the game stopped escalating.
+	# Scale HP/damage per wave (speed too, capped, so it stays dodgeable).
+	var difficulty := _difficulty_multiplier(GameState.wave_number)
+	enemy.max_hp *= difficulty
+	enemy.hp = enemy.max_hp
+	enemy.contact_damage *= difficulty
+	enemy.speed *= minf(1.5, 1.0 + float(GameState.wave_number - 1) * 0.025)
 
 
 ## Host-only: periodically pushes position/hp for every alive enemy so

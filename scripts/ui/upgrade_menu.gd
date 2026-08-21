@@ -11,9 +11,6 @@ const C_DIM     := Color(0.5, 0.5, 0.6)
 const C_DISABLED := Color(0.3, 0.3, 0.35)
 const C_ERROR    := Color(1.0, 0.4, 0.4)
 
-# Icons per module type (enum index matches GameState.ModuleType)
-const MODULE_ICONS  := ["➕", "⚡", "🔫", "🛡", "❤", "💪", "💣"]
-const MODULE_NAMES  := ["Vide", "Générateur", "Tourelle", "Bouclier", "Réparation", "Amplificateur", "Mine"]
 const BUILDABLE_TYPES := [
 	GameState.ModuleType.GENERATOR, GameState.ModuleType.TURRET,
 	GameState.ModuleType.SHIELD,    GameState.ModuleType.REPAIR,
@@ -78,16 +75,25 @@ func _build_ui() -> void:
 
 	# Skill tree: unlock extra station slots (top-left, under the HUD's
 	# energy panel). Always visible during BUILD/UPGRADE, one click each.
+	# Wrapped in its own visible panel — a bare Button here used to fully
+	# darken (via `modulate`) while unaffordable, which made it blend into
+	# the dark background almost completely and read as "not there" to
+	# players who hadn't saved up energy yet.
+	var skill_panel := PanelContainer.new()
+	skill_panel.add_theme_stylebox_override("panel", _skill_panel_style())
+	skill_panel.anchor_left = 0.0
+	skill_panel.anchor_right = 0.0
+	skill_panel.offset_left = 8.0
+	skill_panel.offset_right = 236.0
+	skill_panel.offset_top = 64.0
+	skill_panel.offset_bottom = 100.0
+	add_child(skill_panel)
+
 	_skill_btn = Button.new()
-	_skill_btn.anchor_left = 0.0
-	_skill_btn.anchor_right = 0.0
-	_skill_btn.offset_left = 8.0
-	_skill_btn.offset_right = 236.0
-	_skill_btn.offset_top = 64.0
-	_skill_btn.offset_bottom = 96.0
+	_skill_btn.flat = true
 	_skill_btn.add_theme_font_size_override("font_size", 13)
 	_skill_btn.pressed.connect(_on_skill_pressed)
-	add_child(_skill_btn)
+	skill_panel.add_child(_skill_btn)
 
 	# Contextual panel — anchored at the bottom so it never covers the station
 	# ring (which sits centered around the middle of the screen).
@@ -179,7 +185,7 @@ func _rebuild_panel_contents() -> void:
 			var b := Button.new()
 			b.custom_minimum_size = Vector2(96, 56)
 			b.add_theme_font_size_override("font_size", 12)
-			b.tooltip_text = "%s : %s" % [MODULE_NAMES[t], MODULE_EFFECTS[t][1]]
+			b.tooltip_text = "%s : %s" % [ModuleInfo.NAMES[t], MODULE_EFFECTS[t][1]]
 			b.pressed.connect(func(): _build(captured_t))
 			row.add_child(b)
 			_build_buttons.append(b)
@@ -190,7 +196,7 @@ func _rebuild_panel_contents() -> void:
 		hint.add_theme_color_override("font_color", C_DIM)
 		_panel_body.add_child(hint)
 	else:
-		_panel_title.text = "Emplacement %d — %s" % [_selected_slot + 1, MODULE_NAMES[mtype]]
+		_panel_title.text = "Emplacement %d — %s" % [_selected_slot + 1, ModuleInfo.NAMES[mtype]]
 		var level: int = slot.get("level", 0)
 
 		var current_effect := Label.new()
@@ -201,7 +207,7 @@ func _rebuild_panel_contents() -> void:
 
 		if level >= 3:
 			var lbl := Label.new()
-			lbl.text = "%s %s — Niveau MAX" % [MODULE_ICONS[mtype], MODULE_NAMES[mtype]]
+			lbl.text = "%s %s — Niveau MAX" % [ModuleInfo.ICONS[mtype], ModuleInfo.NAMES[mtype]]
 			lbl.add_theme_color_override("font_color", C_ACCENT)
 			_panel_body.add_child(lbl)
 		else:
@@ -237,7 +243,7 @@ func _refresh_affordability() -> void:
 			var cost: float = GameState.get_module_build_cost(t)
 			var can: bool   = GameState.can_afford(cost)
 			var b := _build_buttons[i]
-			b.text = "%s %s\n%d ⚡" % [MODULE_ICONS[t], MODULE_NAMES[t], int(cost)]
+			b.text = "%s %s\n%d ⚡" % [ModuleInfo.ICONS[t], ModuleInfo.NAMES[t], int(cost)]
 			b.disabled = not can
 			b.modulate = C_WHITE if can else C_DISABLED
 	elif _upgrade_button != null:
@@ -318,8 +324,21 @@ func _refresh_skill_button() -> void:
 	if cost < 0.0:
 		_skill_btn.text = "🌳 Emplacements au maximum"
 		_skill_btn.disabled = true
+		_skill_btn.add_theme_color_override("font_color", C_DIM)
 		return
 	var can := GameState.can_afford(cost)
-	_skill_btn.text = "🌳 Nouvel emplacement — %d ⚡" % int(cost)
+	_skill_btn.text = "🌳 Arbre de compétences : nouvel emplacement — %d ⚡" % int(cost)
 	_skill_btn.disabled = not can
-	_skill_btn.modulate = C_WHITE if can else C_DISABLED
+	# Only the text dims when unaffordable — the panel itself (background,
+	# border) stays fully visible so the feature is always discoverable.
+	_skill_btn.add_theme_color_override("font_color", C_WHITE if can else C_DIM)
+
+
+func _skill_panel_style() -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.08, 0.09, 0.16, 0.97)
+	sb.border_color = C_ACCENT
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(6)
+	sb.set_content_margin_all(6)
+	return sb

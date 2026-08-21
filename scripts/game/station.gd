@@ -150,6 +150,23 @@ func _draw() -> void:
 		var alpha := 1.0 - progress
 		draw_arc(Vector2.ZERO, MINE_RADIUS * progress, 0, TAU, 40, Color(1.0, 0.3, 0.2, alpha), 3.0)
 
+	# Hovered-slot tooltip: module name (or "Vide" for an empty slot), floating
+	# just above the slot so it's clear what you're about to click.
+	if _hovered_slot >= 0 and _hovered_slot < n:
+		var slot: Dictionary = GameState.module_slots[_hovered_slot]
+		var mtype: int = slot["type"]
+		var level: int = slot.get("level", 0)
+		var label: String = ModuleInfo.NAMES[mtype]
+		if mtype != GameState.ModuleType.EMPTY:
+			label += " (niv. %d)" % level
+		var font := ThemeDB.fallback_font
+		var font_size := 14
+		var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+		var tooltip_pos := positions[_hovered_slot] + Vector2(-text_size.x / 2.0, -SLOT_RADIUS - 14.0)
+		draw_rect(Rect2(tooltip_pos + Vector2(-6, -text_size.y + 3), text_size + Vector2(12, 8)),
+			Color(0.02, 0.02, 0.04, 0.85))
+		draw_string(font, tooltip_pos, label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.WHITE)
+
 
 func _input(event: InputEvent) -> void:
 	# Use get_global_mouse_position() (not the raw viewport-space event.position)
