@@ -16,7 +16,7 @@ const C_SUCCESS  := Color(0.3, 1.0, 0.5)
 # ─── UI nodes (built in _ready) ────────────────────────────────────────────────
 var _status_label: Label
 var _code_input: LineEdit
-var _code_display: Label
+var _code_display: Button
 var _party_code_panel: PanelContainer
 var _join_panel: PanelContainer
 var _player_name_input: LineEdit
@@ -113,15 +113,20 @@ func _build_ui() -> void:
 	var pc_vbox := VBoxContainer.new()
 	_party_code_panel.add_child(pc_vbox)
 	var pc_lbl := Label.new()
-	pc_lbl.text = "Code de partie (partage-le à tes amis) :"
+	pc_lbl.text = "Code de partie (clique dessus pour le copier) :"
 	pc_lbl.add_theme_color_override("font_color", C_DIM)
 	pc_lbl.add_theme_font_size_override("font_size", 13)
 	pc_vbox.add_child(pc_lbl)
-	_code_display = Label.new()
-	_code_display.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_code_display = Button.new()
+	_code_display.flat = true
+	_code_display.clip_text = false
+	_code_display.autowrap_mode = TextServer.AUTOWRAP_WORD
+	_code_display.custom_minimum_size = Vector2(0, 40)
 	_code_display.add_theme_font_size_override("font_size", 18)
 	_code_display.add_theme_color_override("font_color", C_ACCENT)
-	_code_display.autowrap_mode = TextServer.AUTOWRAP_WORD
+	_code_display.add_theme_color_override("font_hover_color", C_ACCENT.lightened(0.3))
+	_code_display.tooltip_text = "Cliquer pour copier"
+	_code_display.pressed.connect(_on_code_display_pressed)
 	pc_vbox.add_child(_code_display)
 	var btn_start := _make_button("▶  Démarrer la partie")
 	btn_start.pressed.connect(_on_start_pressed)
@@ -197,6 +202,14 @@ func _on_solo_pressed() -> void:
 	NetworkManager.host_game()
 	GameState.reset()
 	SceneLoader.change_scene("res://scenes/game.tscn")
+
+
+func _on_code_display_pressed() -> void:
+	if _code_display.text.is_empty():
+		return
+	DisplayServer.clipboard_set(_code_display.text)
+	AudioManager.play_sfx(AudioManager.SFX.UI_CLICK)
+	_set_status("Code copié dans le presse-papiers !", C_SUCCESS)
 
 
 func _on_settings_pressed() -> void:
