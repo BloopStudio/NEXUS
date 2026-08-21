@@ -56,8 +56,8 @@ Les builds Windows/Linux/macOS sont publiés automatiquement dans les
 [Releases GitHub](../../releases) à chaque nouvelle version poussée sur `main`
 (numéro de version incrémenté automatiquement) :
 - **Windows** : `NEXUS-Setup-x.y.z.exe` (installeur — raccourcis menu Démarrer/bureau, désinstalleur) ou `NEXUS-x.y.z-windows.zip` (portable)
-- **Linux** : `NEXUS-x.y.z-linux.zip`
-- **macOS** : `NEXUS-x.y.z-macos.zip`
+- **Linux** : `NEXUS-x.y.z-x86_64.AppImage` (télécharge, rends-le exécutable, double-clique — rien à installer) ou `NEXUS-x.y.z-linux.zip` (portable)
+- **macOS** : `NEXUS-x.y.z-macos.dmg` (glisse NEXUS dans Applications, comme n'importe quelle app Mac)
 
 Chaque build livre l'exécutable et ses données dans des fichiers séparés
 (`NEXUS.exe` + `NEXUS.pck`) — rien n'est compressé dans un binaire monolithique.
