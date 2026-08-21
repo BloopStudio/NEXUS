@@ -35,7 +35,9 @@ func _ready() -> void:
 	NetworkManager.connection_succeeded.connect(_on_connection_succeeded)
 	NetworkManager.connection_failed.connect(_on_connection_failed)
 	NetworkManager.upnp_status.connect(_on_upnp_status)
+	NetworkManager.stun_status.connect(_on_stun_status)
 	NetworkManager.game_starting.connect(_on_game_starting)
+	NetworkManager.joining_candidate.connect(_on_joining_candidate)
 	_check_for_update()
 
 
@@ -242,6 +244,10 @@ func _build_ui() -> void:
 # ─── Button callbacks ───────────────────────────────────────────────────────────
 func _on_host_pressed() -> void:
 	_apply_player_name()
+	_upnp_done = false
+	_upnp_success = false
+	_stun_done = false
+	_stun_success = false
 	var err := NetworkManager.host_game()
 	if err != OK:
 		_set_status("Erreur : impossible d'ouvrir le port 7777.", C_ERROR)
@@ -253,15 +259,39 @@ func _on_host_pressed() -> void:
 	_set_status("Ouverture automatique du port…", C_DIM)
 
 
+## UPnP and STUN discovery run in parallel on separate threads and can finish
+## in either order — both feed into the same party code, so either one
+## arriving refreshes the displayed code and status message.
+var _upnp_done := false
+var _upnp_success := false
+var _stun_done := false
+var _stun_success := false
+
 func _on_upnp_status(success: bool) -> void:
+	_upnp_done = true
+	_upnp_success = success
+	_refresh_connectivity_status()
+
+
+func _on_stun_status(success: bool) -> void:
+	_stun_done = true
+	_stun_success = success
+	_refresh_connectivity_status()
+
+
+func _refresh_connectivity_status() -> void:
 	if not _party_code_panel.visible:
 		return
-	# The public IP may only be known once UPnP finishes — refresh the code.
 	_code_display.text = NetworkManager.get_party_code()
-	if success:
+
+	if _upnp_success:
 		_set_status("Prêt ! Partage juste le code — aucune manip requise.", C_SUCCESS)
+	elif _stun_success:
+		_set_status("Port non ouvert automatiquement, mais une adresse alternative a été trouvée — le code a de bonnes chances de fonctionner quand même.", C_SUCCESS)
+	elif _upnp_done and _stun_done:
+		_set_status("Routeur incompatible UPnP et adresse non joignable détectée : le code ne marchera qu'en réseau local, sauf si tu ouvres le port 7777 (UDP) toi-même.", C_ERROR)
 	else:
-		_set_status("Routeur incompatible UPnP : le code ne marchera qu'en réseau local, sauf si tu ouvres le port 7777 (UDP) toi-même.", C_ERROR)
+		_set_status("Ouverture automatique du port…", C_DIM)
 
 
 func _on_join_pressed() -> void:
@@ -349,6 +379,16 @@ func _on_connect_pressed() -> void:
 
 func _on_connection_succeeded() -> void:
 	_set_status("Connecté ! En attente du démarrage…", C_SUCCESS)
+
+
+## The joiner tries each address the party code carries (UPnP-mapped, STUN-
+## discovered, LAN) in turn — surface which one is currently being tried
+## instead of a single unmoving "Connexion en cours…" for up to ~15s.
+func _on_joining_candidate(index: int, total: int, _ip: String) -> void:
+	if total <= 1:
+		_set_status("Connexion en cours…", C_DIM)
+	else:
+		_set_status("Connexion en cours… (essai %d/%d)" % [index + 1, total], C_DIM)
 
 
 func _on_connection_failed() -> void:
