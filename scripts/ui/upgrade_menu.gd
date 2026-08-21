@@ -9,6 +9,7 @@ const C_ACCENT  := Color(0.0, 0.831, 1.0)
 const C_WHITE   := Color(1.0, 1.0, 1.0)
 const C_DIM     := Color(0.5, 0.5, 0.6)
 const C_DISABLED := Color(0.3, 0.3, 0.35)
+const C_ERROR    := Color(1.0, 0.4, 0.4)
 
 # Icons per module type (enum index matches GameState.ModuleType)
 const MODULE_ICONS  := ["➕", "⚡", "🔫", "🛡", "❤", "💪"]
@@ -18,6 +19,19 @@ const BUILDABLE_TYPES := [
 	GameState.ModuleType.SHIELD,    GameState.ModuleType.REPAIR,
 	GameState.ModuleType.BOOSTER,
 ]
+
+# Per-level effect text, purely for display — keep these numbers in sync
+# with their actual source: GENERATOR (idle_generator.gd ENERGY_PER_SEC),
+# TURRET (station.gd _turret_damage/_turret_fire_rate), SHIELD
+# (wave_manager.gd _apply_shield_regen), REPAIR/BOOSTER (game_state.gd
+# REPAIR_MAX_HP_BONUS_PER_LEVEL / BOOSTER_DAMAGE_BONUS_PER_LEVEL).
+const MODULE_EFFECTS := {
+	GameState.ModuleType.GENERATOR: {1: "+3 énergie/s", 2: "+6 énergie/s", 3: "+11 énergie/s"},
+	GameState.ModuleType.TURRET:    {1: "15 dégâts, tir toutes les 2,5 s", 2: "28 dégâts, tir toutes les 1,8 s", 3: "50 dégâts, tir toutes les 1,2 s"},
+	GameState.ModuleType.SHIELD:    {1: "+35 vie après chaque vague", 2: "+50 vie après chaque vague", 3: "+65 vie après chaque vague"},
+	GameState.ModuleType.REPAIR:    {1: "+60 vie max", 2: "+120 vie max", 3: "+180 vie max"},
+	GameState.ModuleType.BOOSTER:   {1: "+15% dégâts des joueurs", 2: "+30% dégâts des joueurs", 3: "+45% dégâts des joueurs"},
+}
 
 var _hint_label: Label = null
 
@@ -150,12 +164,25 @@ func _rebuild_panel_contents() -> void:
 			var b := Button.new()
 			b.custom_minimum_size = Vector2(104, 56)
 			b.add_theme_font_size_override("font_size", 12)
+			b.tooltip_text = "%s : %s" % [MODULE_NAMES[t], MODULE_EFFECTS[t][1]]
 			b.pressed.connect(func(): _build(captured_t))
 			row.add_child(b)
 			_build_buttons.append(b)
+
+		var hint := Label.new()
+		hint.text = "Survole un module pour voir son effet."
+		hint.add_theme_font_size_override("font_size", 11)
+		hint.add_theme_color_override("font_color", C_DIM)
+		_panel_body.add_child(hint)
 	else:
 		_panel_title.text = "Emplacement %d — %s" % [_selected_slot + 1, MODULE_NAMES[mtype]]
 		var level: int = slot.get("level", 0)
+
+		var current_effect := Label.new()
+		current_effect.text = "Actuellement : %s" % MODULE_EFFECTS[mtype][level]
+		current_effect.add_theme_font_size_override("font_size", 12)
+		current_effect.add_theme_color_override("font_color", C_DIM)
+		_panel_body.add_child(current_effect)
 
 		if level >= 3:
 			var lbl := Label.new()
@@ -170,6 +197,12 @@ func _rebuild_panel_contents() -> void:
 			_upgrade_button = Button.new()
 			_upgrade_button.pressed.connect(_upgrade)
 			_panel_body.add_child(_upgrade_button)
+
+		var destroy_btn := Button.new()
+		destroy_btn.text = "🗑 Détruire (pas de remboursement)"
+		destroy_btn.add_theme_color_override("font_color", C_ERROR)
+		destroy_btn.pressed.connect(_destroy)
+		_panel_body.add_child(destroy_btn)
 
 	_refresh_affordability()
 
@@ -194,7 +227,7 @@ func _refresh_affordability() -> void:
 		var level: int = slot.get("level", 0)
 		var cost: float = GameState.get_module_upgrade_cost(_selected_slot)
 		var can: bool   = GameState.can_afford(cost)
-		_upgrade_label.text = "%s %s — Niveau %d → %d" % [MODULE_ICONS[mtype], MODULE_NAMES[mtype], level, level + 1]
+		_upgrade_label.text = "Niveau %d → %d : %s" % [level, level + 1, MODULE_EFFECTS[mtype][level + 1]]
 		_upgrade_button.text = "Améliorer — %d ⚡" % int(cost)
 		_upgrade_button.disabled = not can
 		_upgrade_button.modulate = C_WHITE if can else C_DISABLED
@@ -215,6 +248,14 @@ func _upgrade() -> void:
 		return
 	AudioManager.play_sfx(AudioManager.SFX.UPGRADE)
 	GameState.request_upgrade_module(_selected_slot)
+
+
+func _destroy() -> void:
+	if _selected_slot < 0:
+		return
+	AudioManager.play_sfx(AudioManager.SFX.UI_CLICK)
+	GameState.request_destroy_module(_selected_slot)
+	_deselect()
 
 
 # ─── Signal handlers ────────────────────────────────────────────────────────────

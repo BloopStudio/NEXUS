@@ -41,18 +41,28 @@ func _build_ui() -> void:
 	bg.anchor_bottom = 1.0
 	add_child(bg)
 
+	# The whole menu used to be a fixed-size box pinned to screen-center —
+	# fine at the project's default 1280×720, but on a smaller/resized
+	# window the "Rejoindre" panel pushed the connect button below the
+	# visible area with no way to reach it. A ScrollContainer + CenterContainer
+	# keeps things centered when everything fits, and scrollable instead of
+	# cut off when it doesn't.
+	var scroll := ScrollContainer.new()
+	scroll.anchor_right = 1.0
+	scroll.anchor_bottom = 1.0
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	add_child(scroll)
+
+	var center_wrap := CenterContainer.new()
+	center_wrap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	center_wrap.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.add_child(center_wrap)
+
 	# Center column
 	var center := VBoxContainer.new()
-	center.anchor_left = 0.5
-	center.anchor_right = 0.5
-	center.anchor_top = 0.5
-	center.anchor_bottom = 0.5
-	center.offset_left = -260.0
-	center.offset_right  = 260.0
-	center.offset_top  = -320.0
-	center.offset_bottom = 320.0
+	center.custom_minimum_size = Vector2(520, 0)
 	center.add_theme_constant_override("separation", 18)
-	add_child(center)
+	center_wrap.add_child(center)
 
 	# Title
 	var title := Label.new()

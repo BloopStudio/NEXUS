@@ -14,6 +14,9 @@ const ACTION_LABELS := {
 var fullscreen: bool = false
 var vsync: bool = true
 var window_size: Vector2i = Vector2i(1280, 720)
+var show_fps: bool = false
+var fps_limit: int = 0  # 0 = unlimited
+const FPS_LIMIT_OPTIONS := [0, 30, 60, 120, 144]
 
 var master_volume: float = 1.0
 var music_volume: float = 0.8
@@ -38,6 +41,8 @@ func load_settings() -> void:
 	fullscreen = cfg.get_value("graphics", "fullscreen", fullscreen)
 	vsync = cfg.get_value("graphics", "vsync", vsync)
 	window_size = cfg.get_value("graphics", "window_size", window_size)
+	show_fps = cfg.get_value("graphics", "show_fps", show_fps)
+	fps_limit = cfg.get_value("graphics", "fps_limit", fps_limit)
 
 	master_volume = cfg.get_value("audio", "master", master_volume)
 	music_volume = cfg.get_value("audio", "music", music_volume)
@@ -54,6 +59,8 @@ func save_settings() -> void:
 	cfg.set_value("graphics", "fullscreen", fullscreen)
 	cfg.set_value("graphics", "vsync", vsync)
 	cfg.set_value("graphics", "window_size", window_size)
+	cfg.set_value("graphics", "show_fps", show_fps)
+	cfg.set_value("graphics", "fps_limit", fps_limit)
 
 	cfg.set_value("audio", "master", master_volume)
 	cfg.set_value("audio", "music", music_volume)
@@ -79,10 +86,11 @@ func apply_graphics() -> void:
 	)
 	if not fullscreen:
 		DisplayServer.window_set_size(window_size)
-	Engine.max_fps = 0
+	Engine.max_fps = fps_limit
 	DisplayServer.window_set_vsync_mode(
 		DisplayServer.VSYNC_ENABLED if vsync else DisplayServer.VSYNC_DISABLED
 	)
+	FpsCounter.set_visible_state(show_fps)
 
 
 func apply_audio() -> void:

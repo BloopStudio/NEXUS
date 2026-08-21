@@ -19,6 +19,11 @@ var _hit_flash := 0.0  # seconds remaining for red flash
 ## puppet copy of this enemy in sync (position/hp ticks, and removal on death).
 var enemy_id: int = -1
 
+## Facing angle (radians) toward the station — applied only to the shape
+## drawing, not to the whole node's transform, so the HP bar above it stays
+## upright instead of tilting along with the enemy.
+var _facing_angle: float = 0.0
+
 # Non-host peers only receive a position update ~10×/second (see
 # WaveManager._sync_enemies_rpc); snapping straight to it made movement look
 # choppy. Instead we lerp toward the latest known position every frame.
@@ -54,10 +59,21 @@ func _process(delta: float) -> void:
 		global_position = global_position.lerp(_net_target_pos, clampf(delta * NET_INTERP_SPEED, 0.0, 1.0))
 		queue_redraw()
 
+	_face_target()
+
 	# Flash timer
 	if _hit_flash > 0.0:
 		_hit_flash -= delta
 		queue_redraw()
+
+
+## Rotates the shape to point toward the station — computed the same way on
+## every peer (host movement and client interpolation both converge on
+## `_target`), so it stays in sync without any extra network traffic.
+func _face_target() -> void:
+	var dir := _target - global_position
+	if dir.length() > 1.0:
+		_facing_angle = dir.angle() + PI / 2.0
 
 
 ## Called by WaveManager when a network position/hp update arrives for this
@@ -69,9 +85,11 @@ func set_network_state(pos: Vector2, new_hp: float) -> void:
 
 func _draw() -> void:
 	var col := color if _hit_flash <= 0.0 else Color.WHITE
+	draw_set_transform(Vector2.ZERO, _facing_angle, Vector2.ONE)
 	_draw_shape(col)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-	# HP bar
+	# HP bar (drawn unrotated so it always reads horizontally)
 	var ratio := hp / max_hp
 	var bar_w := shape_radius * 2.0
 	draw_rect(Rect2(-shape_radius, -shape_radius - 10, bar_w, 4), Color(0.2, 0.2, 0.2))

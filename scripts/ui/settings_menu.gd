@@ -15,6 +15,8 @@ var _rebind_buttons: Dictionary = {}  # action -> Button
 var _fullscreen_check: CheckButton
 var _vsync_check: CheckButton
 var _resolution_option: OptionButton
+var _show_fps_check: CheckButton
+var _fps_limit_option: OptionButton
 
 var _master_slider: HSlider
 var _music_slider: HSlider
@@ -197,6 +199,33 @@ func _build_graphics_tab() -> Control:
 	_resolution_option.item_selected.connect(_on_resolution_selected)
 	res_row.add_child(_resolution_option)
 
+	var fps_row := HBoxContainer.new()
+	root.add_child(fps_row)
+	var fps_lbl := Label.new()
+	fps_lbl.text = "Afficher les FPS"
+	fps_lbl.custom_minimum_size = Vector2(200, 0)
+	fps_lbl.add_theme_color_override("font_color", C_TEXT)
+	fps_row.add_child(fps_lbl)
+	_show_fps_check = CheckButton.new()
+	_show_fps_check.button_pressed = SettingsManager.show_fps
+	_show_fps_check.toggled.connect(_on_show_fps_toggled)
+	fps_row.add_child(_show_fps_check)
+
+	var limit_row := HBoxContainer.new()
+	root.add_child(limit_row)
+	var limit_lbl := Label.new()
+	limit_lbl.text = "Limite de FPS"
+	limit_lbl.custom_minimum_size = Vector2(200, 0)
+	limit_lbl.add_theme_color_override("font_color", C_TEXT)
+	limit_row.add_child(limit_lbl)
+	_fps_limit_option = OptionButton.new()
+	for limit in SettingsManager.FPS_LIMIT_OPTIONS:
+		_fps_limit_option.add_item("Illimitée" if limit == 0 else "%d" % limit)
+	var current_limit_idx := SettingsManager.FPS_LIMIT_OPTIONS.find(SettingsManager.fps_limit)
+	_fps_limit_option.selected = maxi(0, current_limit_idx)
+	_fps_limit_option.item_selected.connect(_on_fps_limit_selected)
+	limit_row.add_child(_fps_limit_option)
+
 	return root
 
 
@@ -214,6 +243,18 @@ func _on_vsync_toggled(pressed: bool) -> void:
 
 func _on_resolution_selected(idx: int) -> void:
 	SettingsManager.window_size = RESOLUTIONS[idx]
+	SettingsManager.apply_graphics()
+	SettingsManager.save_settings()
+
+
+func _on_show_fps_toggled(pressed: bool) -> void:
+	SettingsManager.show_fps = pressed
+	SettingsManager.apply_graphics()
+	SettingsManager.save_settings()
+
+
+func _on_fps_limit_selected(idx: int) -> void:
+	SettingsManager.fps_limit = SettingsManager.FPS_LIMIT_OPTIONS[idx]
 	SettingsManager.apply_graphics()
 	SettingsManager.save_settings()
 

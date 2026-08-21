@@ -86,6 +86,10 @@ func _ready() -> void:
 	# everyone else stranded in a dead game scene.
 	NetworkManager.server_disconnected.connect(_on_server_disconnected)
 
+	# A player leaving mid-match used to stay stuck on-screen forever —
+	# nothing ever removed their Player node.
+	NetworkManager.player_disconnected.connect(_on_player_disconnected)
+
 
 func _process(delta: float) -> void:
 	if _notice_timer > 0.0:
@@ -183,6 +187,13 @@ func get_nearest_enemy(pos: Vector2) -> Node2D:
 
 
 # ─── Signal handlers ────────────────────────────────────────────────────────────
+
+func _on_player_disconnected(peer_id: int) -> void:
+	if _players.has(peer_id):
+		_players[peer_id].queue_free()
+		_players.erase(peer_id)
+		_show_notice("JOUEUR DÉCONNECTÉ", 2.0)
+
 
 func _on_wave_cleared() -> void:
 	_show_notice("VAGUE TERMINÉE", 2.5)

@@ -215,6 +215,31 @@ func upgrade_module(slot_index: int) -> bool:
 	return true
 
 
+## Clears a built module back to EMPTY. No energy refund — mirrors the
+## "sunk cost" of most base-building games and keeps the economy simple.
+func destroy_module(slot_index: int) -> bool:
+	if module_slots[slot_index]["type"] == ModuleType.EMPTY:
+		return false
+	module_slots[slot_index] = {"type": ModuleType.EMPTY, "level": 0}
+	_recompute_station_max_hp()
+	module_slots_changed.emit(slot_index)
+	return true
+
+
+func request_destroy_module(slot_index: int) -> void:
+	if NetworkManager.is_host():
+		destroy_module(slot_index)
+	else:
+		_request_destroy_rpc.rpc_id(1, slot_index)
+
+
+@rpc("any_peer", "reliable")
+func _request_destroy_rpc(slot_index: int) -> void:
+	if not multiplayer.is_server():
+		return
+	destroy_module(slot_index)
+
+
 ## REPAIR modules raise the station's max HP (the extra capacity becomes
 ## available headroom — building one doesn't instantly heal the station).
 func _recompute_station_max_hp() -> void:

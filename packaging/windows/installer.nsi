@@ -13,9 +13,10 @@
 
 Name "NEXUS"
 OutFile "${OUT_FILE}"
-InstallDir "$PROGRAMFILES64\NEXUS"
+; Per-user install under %LocalAppData% — no admin/UAC prompt required.
+InstallDir "$LOCALAPPDATA\NEXUS"
 InstallDirRegKey HKCU "Software\NEXUS" "Install_Dir"
-RequestExecutionLevel admin
+RequestExecutionLevel user
 SetCompressor /SOLID lzma
 
 Page directory
@@ -37,9 +38,11 @@ Section "NEXUS (requis)"
   CreateShortcut "$SMPROGRAMS\NEXUS\Désinstaller.lnk" "$INSTDIR\Uninstall.exe"
   CreateShortcut "$DESKTOP\NEXUS.lnk" "$INSTDIR\NEXUS.exe"
 
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\NEXUS" "DisplayName" "NEXUS"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\NEXUS" "UninstallString" "$INSTDIR\Uninstall.exe"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\NEXUS" "DisplayVersion" "${VERSION}"
+  ; HKCU (not HKLM) so uninstall registration doesn't need admin either —
+  ; still shows up fine in "Apps & features" for the current user.
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\NEXUS" "DisplayName" "NEXUS"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\NEXUS" "UninstallString" "$INSTDIR\Uninstall.exe"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\NEXUS" "DisplayVersion" "${VERSION}"
 SectionEnd
 
 Section "Uninstall"
@@ -53,6 +56,6 @@ Section "Uninstall"
   RMDir "$SMPROGRAMS\NEXUS"
   Delete "$DESKTOP\NEXUS.lnk"
 
-  DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\NEXUS"
+  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\NEXUS"
   DeleteRegKey HKCU "Software\NEXUS"
 SectionEnd

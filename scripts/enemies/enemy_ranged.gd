@@ -40,6 +40,8 @@ func _process(delta: float) -> void:
 	else:
 		global_position = global_position.lerp(_net_target_pos, clampf(delta * NET_INTERP_SPEED, 0.0, 1.0))
 
+	_face_target()
+
 	if _hit_flash > 0.0:
 		_hit_flash -= delta
 	if _fire_flash > 0.0:
@@ -60,5 +62,7 @@ func _draw_shape(col: Color) -> void:
 	draw_polyline(pts + PackedVector2Array([pts[0]]), col.lightened(0.3), 1.5)
 
 	if _fire_flash > 0.0:
-		var dir := (_target - global_position).normalized() * 260.0
-		draw_line(Vector2.ZERO, dir, Color(1.0, 0.4, 0.9, _fire_flash / 0.15), 2.0)
+		# This runs inside the rotated draw transform set up by _draw() in
+		# the base class, which already aligns "up" with the direction to
+		# the target — so the beam is simply drawn straight ahead here.
+		draw_line(Vector2.ZERO, Vector2(0, -260), Color(1.0, 0.4, 0.9, _fire_flash / 0.15), 2.0)
