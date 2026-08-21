@@ -22,14 +22,14 @@ const BUILDABLE_TYPES := [
 
 # Per-level effect text, purely for display — keep these numbers in sync
 # with their actual source: GENERATOR (idle_generator.gd ENERGY_PER_SEC),
-# TURRET (station.gd _turret_damage/_turret_fire_rate), SHIELD
-# (wave_manager.gd _apply_shield_regen), REPAIR/BOOSTER (game_state.gd
-# REPAIR_MAX_HP_BONUS_PER_LEVEL / BOOSTER_DAMAGE_BONUS_PER_LEVEL).
+# TURRET (station.gd _turret_damage/_turret_fire_rate), SHIELD (game_state.gd
+# SHIELD_MAX_HP_BONUS_PER_LEVEL), REPAIR (wave_manager.gd _apply_repair_regen),
+# BOOSTER (game_state.gd BOOSTER_DAMAGE_BONUS_PER_LEVEL).
 const MODULE_EFFECTS := {
 	GameState.ModuleType.GENERATOR: {1: "+3 énergie/s", 2: "+6 énergie/s", 3: "+11 énergie/s"},
 	GameState.ModuleType.TURRET:    {1: "15 dégâts, tir toutes les 2,5 s", 2: "28 dégâts, tir toutes les 1,8 s", 3: "50 dégâts, tir toutes les 1,2 s"},
-	GameState.ModuleType.SHIELD:    {1: "+35 vie après chaque vague", 2: "+50 vie après chaque vague", 3: "+65 vie après chaque vague"},
-	GameState.ModuleType.REPAIR:    {1: "+60 vie max", 2: "+120 vie max", 3: "+180 vie max"},
+	GameState.ModuleType.SHIELD:    {1: "+60 vie max", 2: "+120 vie max", 3: "+180 vie max"},
+	GameState.ModuleType.REPAIR:    {1: "+35 vie après chaque vague", 2: "+50 vie après chaque vague", 3: "+65 vie après chaque vague"},
 	GameState.ModuleType.BOOSTER:   {1: "+15% dégâts des joueurs", 2: "+30% dégâts des joueurs", 3: "+45% dégâts des joueurs"},
 	GameState.ModuleType.MINE:      {1: "20 dégâts en zone toutes les 3 s", 2: "35 dégâts en zone toutes les 3 s", 3: "55 dégâts en zone toutes les 3 s"},
 }

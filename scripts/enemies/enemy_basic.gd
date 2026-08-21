@@ -12,11 +12,14 @@ func _ready() -> void:
 
 
 func _draw_shape(col: Color) -> void:
-	# Triangle pointing toward station (rotated toward target)
-	var angle := (_target - global_position).angle() + PI / 2.0
+	# Triangle with one tip pointing "up" (-Y) in local space — the base
+	# class's _draw() already rotates this whole drawing (via
+	# draw_set_transform) so that local "up" faces the target. Computing an
+	# angle here too used to double-rotate it, so the tip never actually
+	# pointed the right way once the orientation system was added.
 	var pts := PackedVector2Array()
 	for i in 3:
-		var a := angle + i * (TAU / 3.0)
+		var a := -PI / 2.0 + i * (TAU / 3.0)
 		pts.append(Vector2(cos(a), sin(a)) * shape_radius)
 	draw_polygon(pts, [col])
 	draw_polyline(pts + PackedVector2Array([pts[0]]), col.lightened(0.3), 1.5)

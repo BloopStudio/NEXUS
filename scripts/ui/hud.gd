@@ -20,11 +20,22 @@ var _station_bar:   ColorRect  = null
 var _station_bar_bg: ColorRect = null
 var _player_list:   VBoxContainer = null
 
+# ── Spell slots (bottom-center) ──
+const SPELL_KEYS := ["E", "A"]
+var _spell_icon_labels: Array[Label] = []
+var _spell_cd_overlays: Array[ColorRect] = []
+var _spell_cd_labels: Array[Label] = []
+
 
 func _ready() -> void:
 	layer = 10
 	_build_ui()
 	_connect_signals()
+	set_process(true)
+
+
+func _process(_delta: float) -> void:
+	_update_spell_slots()
 
 
 func _build_ui() -> void:
@@ -101,6 +112,69 @@ func _build_ui() -> void:
 	bl.add_child(_player_list)
 	_refresh_player_list()
 
+	# ── Bottom-center: spell slots (icon + key + cooldown overlay) ───────────
+	var spell_row := HBoxContainer.new()
+	spell_row.anchor_left = 0.5
+	spell_row.anchor_right = 0.5
+	spell_row.anchor_top = 1.0
+	spell_row.anchor_bottom = 1.0
+	spell_row.offset_left = -60.0
+	spell_row.offset_right = 60.0
+	spell_row.offset_top = -68.0
+	spell_row.offset_bottom = -8.0
+	spell_row.add_theme_constant_override("separation", 8)
+	add_child(spell_row)
+
+	for i in 2:
+		var slot := PanelContainer.new()
+		slot.add_theme_stylebox_override("panel", _panel_style())
+		slot.custom_minimum_size = Vector2(52, 52)
+		spell_row.add_child(slot)
+
+		var slot_stack := Control.new()
+		slot_stack.custom_minimum_size = Vector2(48, 48)
+		slot.add_child(slot_stack)
+
+		var icon_lbl := Label.new()
+		icon_lbl.add_theme_font_size_override("font_size", 22)
+		icon_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		icon_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		icon_lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		slot_stack.add_child(icon_lbl)
+		_spell_icon_labels.append(icon_lbl)
+
+		# Darkening overlay whose height tracks remaining-cooldown ratio —
+		# a simple "fills back up" bar instead of a radial wipe.
+		var overlay := ColorRect.new()
+		overlay.color = Color(0.0, 0.0, 0.0, 0.65)
+		overlay.anchor_left = 0.0
+		overlay.anchor_right = 1.0
+		overlay.anchor_bottom = 1.0
+		overlay.anchor_top = 1.0
+		slot_stack.add_child(overlay)
+		_spell_cd_overlays.append(overlay)
+
+		var cd_lbl := Label.new()
+		cd_lbl.add_theme_font_size_override("font_size", 13)
+		cd_lbl.add_theme_color_override("font_color", C_WHITE)
+		cd_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cd_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		cd_lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		slot_stack.add_child(cd_lbl)
+		_spell_cd_labels.append(cd_lbl)
+
+		var key_lbl := Label.new()
+		key_lbl.text = SPELL_KEYS[i]
+		key_lbl.add_theme_font_size_override("font_size", 10)
+		key_lbl.add_theme_color_override("font_color", C_DIM)
+		key_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		key_lbl.anchor_left = 1.0
+		key_lbl.anchor_right = 1.0
+		key_lbl.anchor_top = 0.0
+		key_lbl.offset_left = -14.0
+		key_lbl.offset_top = -2.0
+		slot_stack.add_child(key_lbl)
+
 	# ── Top-right, below station HP: leave the match without quitting ────────
 	var quit_btn := Button.new()
 	quit_btn.text = "✕ Quitter"
@@ -160,6 +234,34 @@ func update_build_timer(seconds_left: float, max_time: float) -> void:
 	_timer_value = seconds_left
 	var ratio := clampf(seconds_left / _timer_max, 0.0, 1.0)
 	_timer_bar.anchor_right = ratio
+
+
+## Reads the local player's equipped spells/cooldowns each frame and updates
+## the two bottom-center slot icons — polling is simpler than plumbing a
+## signal through Game/Player for something this cheap to just read.
+func _update_spell_slots() -> void:
+	var game := get_parent()
+	if game == null or not game.has_method("get_local_player"):
+		return
+	var player: Node = game.get_local_player()
+	if player == null or not player.has_method("get_spell_slot_info"):
+		return
+
+	for i in 2:
+		var info: Array = player.get_spell_slot_info(i)
+		if info.is_empty():
+			_spell_icon_labels[i].text = ""
+			continue
+		var spell_id: String = info[0]
+		var remaining: float = info[1]
+		var max_cd: float = info[2]
+		var def: Dictionary = Spells.DEFS[spell_id]
+		_spell_icon_labels[i].text = def["icon"]
+		_spell_icon_labels[i].tooltip_text = def["name"]
+
+		var ratio := clampf(remaining / max_cd, 0.0, 1.0) if max_cd > 0.0 else 0.0
+		_spell_cd_overlays[i].anchor_top = 1.0 - ratio
+		_spell_cd_labels[i].text = "%d" % ceili(remaining) if remaining > 0.05 else ""
 
 
 # ─── Player list ──────────────────────────────────────────────────────────────

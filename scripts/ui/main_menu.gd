@@ -20,6 +20,8 @@ var _code_display: Button
 var _party_code_panel: PanelContainer
 var _join_panel: PanelContainer
 var _player_name_input: LineEdit
+var _spell_slot_e: OptionButton
+var _spell_slot_a: OptionButton
 
 func _ready() -> void:
 	_build_ui()
@@ -94,6 +96,28 @@ func _build_ui() -> void:
 	_player_name_input.custom_minimum_size = Vector2(180, 36)
 	_player_name_input.text = "Joueur%d" % randi_range(1, 99)
 	name_row.add_child(_player_name_input)
+
+	_spacer(center, 8)
+
+	# ── Loadout: which spell goes on which key ──
+	# Two independent dropdowns, not a fixed pairing — the player can put any
+	# spell on either key, or even pick the same one twice.
+	var loadout_lbl := Label.new()
+	loadout_lbl.text = "Sorts (touches E / A) :"
+	loadout_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	loadout_lbl.add_theme_color_override("font_color", C_DIM)
+	loadout_lbl.add_theme_font_size_override("font_size", 13)
+	center.add_child(loadout_lbl)
+
+	var loadout_row := HBoxContainer.new()
+	loadout_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	loadout_row.add_theme_constant_override("separation", 10)
+	center.add_child(loadout_row)
+
+	_spell_slot_e = _make_spell_dropdown("E : ", Spells.DEFAULT_LOADOUT[0])
+	loadout_row.add_child(_spell_slot_e.get_parent())
+	_spell_slot_a = _make_spell_dropdown("A : ", Spells.DEFAULT_LOADOUT[1])
+	loadout_row.add_child(_spell_slot_a.get_parent())
 
 	_spacer(center, 8)
 
@@ -271,6 +295,34 @@ func _apply_player_name() -> void:
 	if n.is_empty():
 		n = "Joueur"
 	NetworkManager.local_player_info["name"] = n
+	NetworkManager.local_player_info["spells"] = [
+		_spell_slot_e.get_item_metadata(_spell_slot_e.selected),
+		_spell_slot_a.get_item_metadata(_spell_slot_a.selected),
+	]
+
+
+## Builds a "<label> [dropdown]" pair listing every spell — returns the
+## OptionButton; its parent HBoxContainer is what actually gets added to the
+## tree (see caller).
+func _make_spell_dropdown(label_text: String, default_id: String) -> OptionButton:
+	var row := HBoxContainer.new()
+	var lbl := Label.new()
+	lbl.text = label_text
+	lbl.add_theme_color_override("font_color", C_TEXT)
+	row.add_child(lbl)
+
+	var opt := OptionButton.new()
+	opt.custom_minimum_size = Vector2(170, 32)
+	var default_idx := 0
+	for id in Spells.all_ids():
+		var def: Dictionary = Spells.DEFS[id]
+		opt.add_item("%s %s" % [def["icon"], def["name"]])
+		opt.set_item_metadata(opt.item_count - 1, id)
+		if id == default_id:
+			default_idx = opt.item_count - 1
+	opt.selected = default_idx
+	row.add_child(opt)
+	return opt
 
 
 func _set_status(text: String, color: Color = C_DIM) -> void:

@@ -201,9 +201,16 @@ func _fire_turret(slot_index: int) -> void:
 
 	var dmg := _turret_damage(GameState.module_slots[slot_index]["level"])
 	enemy.take_damage(dmg)
-	AudioManager.play_sfx(AudioManager.SFX.TURRET_SHOT, -10.0)
 
-	_flashes[slot_index] = {"target": to_local(enemy.global_position), "t": FLASH_DURATION}
+	_turret_flash_rpc.rpc(slot_index, to_local(enemy.global_position))
+
+
+## Broadcasts the muzzle-flash visual (and its sound) to every peer — firing
+## is host-only simulation, but everyone should see/hear the shot.
+@rpc("authority", "call_local", "reliable")
+func _turret_flash_rpc(slot_index: int, target_local_pos: Vector2) -> void:
+	AudioManager.play_sfx(AudioManager.SFX.TURRET_SHOT, -10.0)
+	_flashes[slot_index] = {"target": target_local_pos, "t": FLASH_DURATION}
 	queue_redraw()
 
 
@@ -240,6 +247,13 @@ func _pulse_mine(slot_index: int, level: int) -> void:
 	var dmg := _mine_damage(level)
 	for enemy in game.get_enemies_in_radius(global_position, MINE_RADIUS):
 		enemy.take_damage(dmg)
+	_mine_pulse_rpc.rpc(slot_index)
+
+
+## Broadcasts the mine pulse ring (and its sound) to every peer — damage is
+## host-only simulation, but everyone should see/hear the pulse.
+@rpc("authority", "call_local", "reliable")
+func _mine_pulse_rpc(slot_index: int) -> void:
 	AudioManager.play_sfx(AudioManager.SFX.TURRET_SHOT, -6.0)
 	_mine_pulses[slot_index] = MINE_PULSE_DURATION
 	queue_redraw()

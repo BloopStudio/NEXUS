@@ -30,6 +30,11 @@ var _facing_angle: float = 0.0
 var _net_target_pos: Vector2 = Vector2.ZERO
 const NET_INTERP_SPEED := 12.0
 
+# Set by the player "Champ ralentisseur" spell (host-only, since only the
+# host moves enemies) — a multiplier on speed for the remaining duration.
+var _slow_factor: float = 1.0
+var _slow_timer: float = 0.0
+
 signal died(enemy: Node2D, energy_reward: float)
 
 
@@ -48,9 +53,14 @@ func _process(delta: float) -> void:
 		return
 
 	if NetworkManager.is_host():
+		if _slow_timer > 0.0:
+			_slow_timer -= delta
+			if _slow_timer <= 0.0:
+				_slow_factor = 1.0
+
 		# Move toward station
 		var dir := (_target - global_position).normalized()
-		global_position += dir * speed * delta
+		global_position += dir * speed * _slow_factor * delta
 
 		# Contact damage when close enough
 		if global_position.distance_to(_target) < shape_radius + 42.0:
@@ -78,8 +88,18 @@ func _face_target() -> void:
 
 ## Called by WaveManager when a network position/hp update arrives for this
 ## enemy (client-side only — the host is its own source of truth).
+## take_damage() (and its hit-flash/sound) only ever runs where the actual
+## collision happens — turrets, mines, bullets, the player ability — all of
+## which are host-only logic, so clients never called it and never saw the
+## flash. Piggybacking a "did hp drop since last sync?" check on this
+## existing ~10Hz update gives clients the same feedback without a new RPC
+## per hit.
 func set_network_state(pos: Vector2, new_hp: float) -> void:
 	_net_target_pos = pos
+	if new_hp < hp:
+		_hit_flash = 0.12
+		AudioManager.play_sfx(AudioManager.SFX.ENEMY_HIT, -8.0)
+		queue_redraw()
 	hp = new_hp
 
 
@@ -90,9 +110,6 @@ func _draw() -> void:
 
 	draw_set_transform(Vector2.ZERO, _facing_angle, Vector2.ONE)
 	_draw_shape(col)
-	# "Eye" facing the direction of travel — small bright dot near the front
-	# tip, now that shapes are actually oriented toward their target.
-	draw_circle(Vector2(0, -shape_radius * 0.45), shape_radius * 0.16, Color(1.0, 1.0, 1.0, 0.85))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	# HP bar (drawn unrotated so it always reads horizontally)
@@ -106,6 +123,12 @@ func _draw() -> void:
 ## Override to draw the enemy's specific shape
 func _draw_shape(col: Color) -> void:
 	draw_circle(Vector2.ZERO, shape_radius, col)
+
+
+## Host-only: applied by the player "Champ ralentisseur" spell.
+func apply_slow(factor: float, duration: float) -> void:
+	_slow_factor = factor
+	_slow_timer = duration
 
 
 func take_damage(amount: float) -> void:

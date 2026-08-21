@@ -28,7 +28,7 @@ const MODULE_COSTS := {
 	ModuleType.MINE:      55,
 }
 const BOOSTER_DAMAGE_BONUS_PER_LEVEL := 0.15  # +15% player bullet damage per level, per module
-const REPAIR_MAX_HP_BONUS_PER_LEVEL := 60.0   # +60 max station HP per level, per module
+const SHIELD_MAX_HP_BONUS_PER_LEVEL := 60.0   # +60 max station HP per level, per module
 const UPGRADE_COST_MULTIPLIER := 1.8  # cost *= multiplier per level
 
 # ─── State ─────────────────────────────────────────────────────────────────────
@@ -295,13 +295,13 @@ func _request_destroy_rpc(slot_index: int) -> void:
 	destroy_module(slot_index)
 
 
-## REPAIR modules raise the station's max HP (the extra capacity becomes
+## SHIELD modules raise the station's max HP (the extra capacity becomes
 ## available headroom — building one doesn't instantly heal the station).
 func _recompute_station_max_hp() -> void:
 	var bonus := 0.0
 	for slot in module_slots:
-		if slot["type"] == ModuleType.REPAIR:
-			bonus += REPAIR_MAX_HP_BONUS_PER_LEVEL * slot["level"]
+		if slot["type"] == ModuleType.SHIELD:
+			bonus += SHIELD_MAX_HP_BONUS_PER_LEVEL * slot["level"]
 	var new_max := 500.0 + bonus
 	if new_max != station_max_hp:
 		station_max_hp = new_max

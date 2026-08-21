@@ -35,17 +35,28 @@ phase de construction, coût en énergie croissant).
 |--------|-------|
 | ⚡ Générateur | Produit de l'énergie passivement |
 | 🔫 Tourelle | Tire automatiquement sur l'ennemi le plus proche |
-| 🛡 Bouclier | Régénère la vie de la station après chaque vague |
-| ❤ Réparation | Augmente la vie max de la station |
+| 🛡 Bouclier | Augmente la vie max de la station |
+| ❤ Réparation | Régénère la vie de la station après chaque vague |
 | 💪 Amplificateur | Augmente les dégâts des tirs des joueurs |
 | 💣 Mine | Dégâts de zone périodiques à tous les ennemis proches |
 
 Chaque module a 3 niveaux d'amélioration, et peut être détruit pour
 récupérer 30% de l'énergie investie (construction + améliorations).
 
-### Sort du joueur
-**Onde de choc** (touche E par défaut, réassignable) : dégâts de zone
-autour du joueur, sur un temps de recharge de 6 secondes.
+### Sorts du joueur
+Avant de démarrer une partie, chaque joueur choisit dans le menu principal
+quel sort il place sur chacune des deux touches de sort (E et A par défaut,
+réassignables dans les réglages — un sort n'est jamais figé sur une touche) :
+
+| Sort | Effet | Recharge |
+|---|---|---|
+| 💥 Onde de choc | Dégâts de zone autour du joueur | 6 s |
+| ✚ Soin d'urgence | Restaure instantanément la vie de la station | 12 s |
+| ❄ Champ ralentisseur | Ralentit les ennemis proches | 9 s |
+| 🚀 Ruée | Vitesse de déplacement fortement augmentée | 5 s |
+
+Le HUD affiche les deux sorts équipés avec leur icône et le temps de
+recharge restant.
 
 ### Vagues
 Des vagues d'ennemis arrivent à intervalles réguliers.

@@ -8,23 +8,29 @@ const SHOOT_COOLDOWN := 0.6
 const BULLET_SPEED   := 350.0
 const BULLET_DAMAGE  := 12.0
 
-## "Onde de choc" — an area-damage burst around the player, on a cooldown.
-## The only player ability for now; default key is E (rebindable).
-const ABILITY_COOLDOWN := 6.0
-const ABILITY_RADIUS   := 90.0
-const ABILITY_DAMAGE   := 30.0
 const ABILITY_PULSE_DURATION := 0.4
 
 const C_PLAYER  := Color(0.0, 0.831, 1.0)
 const C_OUTLINE := Color(1.0, 1.0, 1.0, 0.5)
+
+## The two spells picked in the main-menu loadout screen (see
+## Spells.DEFAULT_LOADOUT for the fallback), bound respectively to the
+## "ability" (E) and "ability_2" (A) input actions — not fixed to a single
+## spell, the player chooses which spell sits in which slot before the match.
+var equipped_spells: Array = Spells.DEFAULT_LOADOUT.duplicate()
 
 @export var peer_id: int = 1
 var player_name: String = "Player"
 var player_color: Color = C_PLAYER
 
 var _shoot_timer: float = 0.0
-var _ability_timer: float = 0.0
+## slot index (0 or 1) -> seconds of cooldown remaining, keyed the same way
+## as equipped_spells so the HUD can read both in lockstep.
+var _spell_cooldowns: Array[float] = [0.0, 0.0]
 var _ability_pulse: float = 0.0
+var _pulse_color: Color = C_PLAYER
+var _pulse_radius: float = 60.0
+var _dash_timer: float = 0.0
 var _is_local: bool = false
 
 
@@ -39,10 +45,13 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_shoot_timer -= delta
-	if _ability_timer > 0.0:
-		_ability_timer -= delta
+	for i in _spell_cooldowns.size():
+		if _spell_cooldowns[i] > 0.0:
+			_spell_cooldowns[i] -= delta
 	if _ability_pulse > 0.0:
 		_ability_pulse -= delta
+	if _dash_timer > 0.0:
+		_dash_timer -= delta
 	# Aim indicator
 	queue_redraw()
 
@@ -56,7 +65,8 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_pressed("move_up"):    dir.y -= 1
 	if dir != Vector2.ZERO:
 		dir = dir.normalized()
-		var new_pos := global_position + dir * SPEED * delta
+		var speed := SPEED * (Spells.DEFS[Spells.DASH]["speed_mult"] if _dash_timer > 0.0 else 1.0)
+		var new_pos := global_position + dir * speed * delta
 		# Keep within arena bounds
 		new_pos = new_pos.clamp(Vector2(-420, -420), Vector2(420, 420))
 		_move_rpc.rpc(new_pos)
@@ -67,10 +77,31 @@ func _physics_process(delta: float) -> void:
 		var target := get_global_mouse_position()
 		_shoot_rpc.rpc(target, BULLET_DAMAGE * GameState.get_player_damage_multiplier())
 
-	# Ability: "Onde de choc" — area burst, default key E
-	if Input.is_action_just_pressed("ability") and _ability_timer <= 0.0:
-		_ability_timer = ABILITY_COOLDOWN
-		_ability_rpc.rpc()
+	# Spell slots: "ability" (default E) and "ability_2" (default A)
+	if Input.is_action_just_pressed("ability"):
+		_try_cast(0)
+	if Input.is_action_just_pressed("ability_2"):
+		_try_cast(1)
+
+
+func _try_cast(slot: int) -> void:
+	if slot >= equipped_spells.size():
+		return
+	if _spell_cooldowns[slot] > 0.0:
+		return
+	var spell_id: String = equipped_spells[slot]
+	_spell_cooldowns[slot] = Spells.DEFS[spell_id]["cooldown"]
+	_cast_spell_rpc.rpc(spell_id)
+
+
+## Returns [spell_id, remaining_cooldown, max_cooldown] for the given slot,
+## used by the HUD to draw the two spell icons. Empty array if unset.
+func get_spell_slot_info(slot: int) -> Array:
+	if slot >= equipped_spells.size():
+		return []
+	var spell_id: String = equipped_spells[slot]
+	var cd: float = Spells.DEFS[spell_id]["cooldown"]
+	return [spell_id, maxf(0.0, _spell_cooldowns[slot]), cd]
 
 
 @rpc("any_peer", "call_local", "unreliable")
@@ -79,20 +110,42 @@ func _move_rpc(pos: Vector2) -> void:
 	queue_redraw()
 
 
+## Plays the cast visual/audio on every peer, and — same pattern as
+## bullets/mines — applies the actual gameplay effect host-side only.
 @rpc("any_peer", "call_local", "reliable")
-func _ability_rpc() -> void:
-	_ability_pulse = ABILITY_PULSE_DURATION
+func _cast_spell_rpc(spell_id: String) -> void:
+	var def: Dictionary = Spells.DEFS[spell_id]
+	_pulse_color = def["color"]
+	_pulse_radius = def.get("radius", 60.0)
 	AudioManager.play_sfx(AudioManager.SFX.UPGRADE, 2.0)
 	queue_redraw()
 
-	# Only the host actually applies damage — same pattern as bullets/mines,
-	# every peer just plays the same visual/audio locally.
-	if NetworkManager.is_host():
-		var parent := get_parent()
-		if parent != null and parent.has_method("get_enemies_in_radius"):
-			var dmg := ABILITY_DAMAGE * GameState.get_player_damage_multiplier()
-			for enemy in parent.get_enemies_in_radius(global_position, ABILITY_RADIUS):
-				enemy.take_damage(dmg)
+	match spell_id:
+		Spells.DASH:
+			_dash_timer = def["duration"]
+		_:
+			_ability_pulse = ABILITY_PULSE_DURATION
+
+	if not NetworkManager.is_host():
+		return
+
+	match spell_id:
+		Spells.SHOCKWAVE:
+			var parent := get_parent()
+			if parent != null and parent.has_method("get_enemies_in_radius"):
+				var dmg: float = def["damage"] * GameState.get_player_damage_multiplier()
+				for enemy in parent.get_enemies_in_radius(global_position, def["radius"]):
+					enemy.take_damage(dmg)
+		Spells.HEAL:
+			GameState.heal_station(def["amount"])
+		Spells.SLOW:
+			var parent := get_parent()
+			if parent != null and parent.has_method("get_enemies_in_radius"):
+				for enemy in parent.get_enemies_in_radius(global_position, def["radius"]):
+					if enemy.has_method("apply_slow"):
+						enemy.apply_slow(def["slow_factor"], def["duration"])
+		Spells.DASH:
+			pass  # movement-only, handled above on every peer
 
 
 @rpc("any_peer", "call_local", "reliable")
@@ -128,11 +181,16 @@ func _draw() -> void:
 			aim_dir * 20.0 - perp, aim_dir * 20.0 + perp,
 		]), [Color(0.85, 0.85, 0.9)])
 
-	# Ability pulse — expanding, fading ring on every peer that sees it.
+	# Spell cast pulse — expanding, fading ring on every peer that sees it,
+	# colored per-spell so Heal/Slow/Shockwave read differently at a glance.
 	if _ability_pulse > 0.0:
 		var progress := 1.0 - clampf(_ability_pulse / ABILITY_PULSE_DURATION, 0.0, 1.0)
-		draw_arc(Vector2.ZERO, ABILITY_RADIUS * progress, 0, TAU, 40,
-			Color(player_color.r, player_color.g, player_color.b, 1.0 - progress), 3.0, true)
+		draw_arc(Vector2.ZERO, _pulse_radius * progress, 0, TAU, 40,
+			Color(_pulse_color.r, _pulse_color.g, _pulse_color.b, 1.0 - progress), 3.0, true)
+
+	# Dash trail — glowing rim while the speed boost is active.
+	if _dash_timer > 0.0:
+		draw_arc(Vector2.ZERO, 15.0, 0, TAU, 24, Spells.DEFS[Spells.DASH]["color"], 3.0, true)
 
 	# Name tag — centered above the player, with a backing pill for contrast
 	# against the background grid (a plain outlined string was easy to miss).

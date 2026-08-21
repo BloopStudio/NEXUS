@@ -163,11 +163,21 @@ func _add_player(peer_id: int) -> void:
 	var info: Dictionary = NetworkManager.players.get(peer_id, {})
 	player.player_name  = info.get("name",  "Player")
 	player.player_color = info.get("color", Color.CYAN)
+	var spells: Array = info.get("spells", [])
+	if spells.size() == 2:
+		player.equipped_spells = spells
 	# Spread players in a small arc at start
 	var angle := (float(_players.size()) / maxf(1.0, float(NetworkManager.players.size()))) * TAU
 	player.position = Vector2(cos(angle), sin(angle)) * 80.0
 	add_child(player)
 	_players[peer_id] = player
+
+
+## Used by the HUD to read the local player's equipped spells/cooldowns.
+func get_local_player() -> Node2D:
+	if multiplayer.multiplayer_peer == null:
+		return null
+	return _players.get(multiplayer.get_unique_id(), null)
 
 
 # ─── Nearest enemy helper (used by Station turrets) ────────────────────────────

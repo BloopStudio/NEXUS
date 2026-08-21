@@ -14,6 +14,15 @@ const ENEMY_SPLITTER := preload("res://scripts/enemies/enemy_splitter.gd")
 var _spawn_queue: Array[String] = []
 var _spawn_timer: float = 0.0
 var _phase_timer: float = BUILD_TIME
+var _build_time_max: float = BUILD_TIME
+
+# The countdown itself only ever runs in the host's _process (clients don't
+# run this node's process at all — see _ready), so without broadcasting it
+# clients never see a build-phase timer. Throttled well below the
+# once-per-frame local emit rate since exact sub-second precision doesn't
+# matter for a UI bar.
+var _timer_sync_timer: float = 0.0
+const TIMER_SYNC_INTERVAL := 0.2
 
 var station_node: Node2D = null
 
@@ -43,6 +52,10 @@ func _process(delta: float) -> void:
 		GameState.Phase.BUILD:
 			_phase_timer -= delta
 			build_phase_tick.emit(_phase_timer)
+			_timer_sync_timer -= delta
+			if _timer_sync_timer <= 0.0:
+				_timer_sync_timer = TIMER_SYNC_INTERVAL
+				_build_timer_rpc.rpc(maxf(0.0, _phase_timer), _build_time_max)
 			if _phase_timer <= 0.0:
 				_start_wave()
 
@@ -174,6 +187,15 @@ func _broadcast_enemy_sync() -> void:
 		_sync_enemies_rpc.rpc(data)
 
 
+## Drives the HUD's build-phase countdown bar on every peer (host included,
+## via call_local, so there's a single code path).
+@rpc("authority", "call_local", "unreliable")
+func _build_timer_rpc(seconds_left: float, max_time: float) -> void:
+	var game := get_parent()
+	if game != null and game.has_node("HUD"):
+		game.get_node("HUD").update_build_timer(seconds_left, max_time)
+
+
 @rpc("authority", "unreliable")
 func _sync_enemies_rpc(data: Array) -> void:
 	for entry in data:
@@ -202,19 +224,20 @@ func _wave_cleared() -> void:
 	AudioManager.play_sfx(AudioManager.SFX.WAVE_CLEARED)
 	wave_cleared.emit()
 
-	# Heal shield modules
-	_apply_shield_regen()
+	# Heal via repair modules
+	_apply_repair_regen()
 
 	# Transition to upgrade phase briefly then build
 	GameState.set_phase(GameState.Phase.UPGRADE)
 	await get_tree().create_timer(0.5).timeout
 	GameState.set_phase(GameState.Phase.BUILD)
 	_phase_timer = maxf(8.0, BUILD_TIME - GameState.wave_number * 0.5)
+	_build_time_max = _phase_timer
 
 
-func _apply_shield_regen() -> void:
+func _apply_repair_regen() -> void:
 	for slot in GameState.module_slots:
-		if slot["type"] == GameState.ModuleType.SHIELD:
+		if slot["type"] == GameState.ModuleType.REPAIR:
 			var regen: float = 20.0 + float(slot["level"]) * 15.0
 			GameState.heal_station(regen)
 
@@ -222,6 +245,13 @@ func _apply_shield_regen() -> void:
 func _on_enemy_died(enemy: Node2D, energy: float) -> void:
 	GameState.add_energy(energy)
 	_remove_enemy_rpc.rpc(enemy.enemy_id)
+	# This death always removes exactly one active enemy from the count,
+	# whether or not it spawns replacements below — forgetting this decrement
+	# for splitters used to leak the counter upward by one per split, which
+	# eventually left it stuck above zero forever (empty spawn queue + dead
+	# screen, but the WAVE→BUILD transition never fires since it waits for
+	# _active_enemies == 0).
+	_active_enemies = maxi(0, _active_enemies - 1)
 
 	# Some enemies (Splitter) spawn replacements on death instead of just
 	# disappearing — read this before the node is queued for removal above.
@@ -229,9 +259,6 @@ func _on_enemy_died(enemy: Node2D, energy: float) -> void:
 		var split_type: String = enemy.get_split_type()
 		if not split_type.is_empty():
 			_spawn_split_children(split_type, enemy.get_split_count(), enemy.global_position)
-			return  # active_enemies stays put — the splits replace this one
-
-	_active_enemies = maxi(0, _active_enemies - 1)
 
 
 ## Splits spawn immediately at the death position (scattered a little so
