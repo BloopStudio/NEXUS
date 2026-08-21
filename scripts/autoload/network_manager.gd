@@ -20,6 +20,10 @@ signal server_disconnected()
 ## code will likely only work for players on the same local network, or the
 ## host will need to forward the port manually.
 signal upnp_status(success: bool)
+## Emitted on every peer (host included) when the host starts the match —
+## this is what actually moves everyone from the main menu into the game
+## scene together, instead of only the host who clicked "Démarrer".
+signal game_starting()
 
 # Local player info sent to peers on join
 var local_player_info := {"name": "Player", "color": Color.CYAN}
@@ -177,6 +181,20 @@ func _send_player_list(list: Dictionary) -> void:
 func _remove_player(peer_id: int) -> void:
 	players.erase(peer_id)
 	player_disconnected.emit(peer_id)
+
+
+## Host only: tell every connected peer (host included, via call_local) to
+## start the match together. Call this instead of changing the scene
+## directly — otherwise clients are left stuck on "En attente du démarrage".
+func start_game() -> void:
+	if not is_host():
+		return
+	_start_game_rpc.rpc()
+
+
+@rpc("authority", "call_local", "reliable")
+func _start_game_rpc() -> void:
+	game_starting.emit()
 
 
 # ─── Signal handlers ───────────────────────────────────────────────────────────

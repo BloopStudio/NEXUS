@@ -26,6 +26,7 @@ func _ready() -> void:
 	NetworkManager.connection_succeeded.connect(_on_connection_succeeded)
 	NetworkManager.connection_failed.connect(_on_connection_failed)
 	NetworkManager.upnp_status.connect(_on_upnp_status)
+	NetworkManager.game_starting.connect(_on_game_starting)
 
 
 # ─── UI builder ────────────────────────────────────────────────────────────────
@@ -210,7 +211,7 @@ func _on_start_pressed() -> void:
 	if NetworkManager.get_player_count() < 1:
 		_set_status("En attente d'au moins un joueur…", C_ERROR)
 		return
-	_start_game()
+	NetworkManager.start_game()
 
 
 func _on_connect_pressed() -> void:
@@ -233,10 +234,12 @@ func _on_connection_failed() -> void:
 	_set_status("Connexion échouée. Vérifie le code et le port.", C_ERROR)
 
 
-# ─── Helpers ───────────────────────────────────────────────────────────────────
-func _start_game() -> void:
+func _on_game_starting() -> void:
 	GameState.reset()
 	SceneLoader.change_scene("res://scenes/game.tscn")
+
+
+# ─── Helpers ───────────────────────────────────────────────────────────────────
 
 
 func _apply_player_name() -> void:
