@@ -75,7 +75,7 @@ func _build_ui() -> void:
 	add_child(_panel)
 
 	var vbox := VBoxContainer.new()
-	vbox.theme_override_constants = {"separation": 10}
+	vbox.add_theme_constant_override("separation", 10)
 	_panel.add_child(vbox)
 
 	var header := HBoxContainer.new()
@@ -92,7 +92,7 @@ func _build_ui() -> void:
 	header.add_child(close_btn)
 
 	_panel_body = VBoxContainer.new()
-	_panel_body.theme_override_constants = {"separation": 8}
+	_panel_body.add_theme_constant_override("separation", 8)
 	vbox.add_child(_panel_body)
 
 
@@ -142,7 +142,7 @@ func _rebuild_panel_contents() -> void:
 		_panel_title.text = "Emplacement %d — Construire" % (_selected_slot + 1)
 
 		var row := HBoxContainer.new()
-		row.theme_override_constants = {"separation": 8}
+		row.add_theme_constant_override("separation", 8)
 		_panel_body.add_child(row)
 
 		for t in BUILDABLE_TYPES:

@@ -49,7 +49,7 @@ func _build_ui() -> void:
 	add_child(panel)
 
 	var vbox := VBoxContainer.new()
-	vbox.theme_override_constants = {"separation": 12}
+	vbox.add_theme_constant_override("separation", 12)
 	panel.add_child(vbox)
 
 	var title := Label.new()
@@ -79,7 +79,7 @@ func _build_ui() -> void:
 func _build_controls_tab() -> Control:
 	var root := VBoxContainer.new()
 	root.name = "Contrôles"
-	root.theme_override_constants = {"separation": 10}
+	root.add_theme_constant_override("separation", 10)
 
 	var hint := Label.new()
 	hint.text = "Clique sur une touche puis appuie sur la nouvelle touche/bouton."
@@ -90,7 +90,7 @@ func _build_controls_tab() -> Control:
 
 	for action in SettingsManager.REBINDABLE_ACTIONS:
 		var row := HBoxContainer.new()
-		row.theme_override_constants = {"separation": 12}
+		row.add_theme_constant_override("separation", 12)
 		root.add_child(row)
 
 		var lbl := Label.new()
@@ -156,7 +156,7 @@ func _event_display_name(event: InputEvent) -> String:
 func _build_graphics_tab() -> Control:
 	var root := VBoxContainer.new()
 	root.name = "Graphismes"
-	root.theme_override_constants = {"separation": 14}
+	root.add_theme_constant_override("separation", 14)
 
 	var fs_row := HBoxContainer.new()
 	root.add_child(fs_row)
@@ -223,7 +223,7 @@ func _on_resolution_selected(idx: int) -> void:
 func _build_audio_tab() -> Control:
 	var root := VBoxContainer.new()
 	root.name = "Son"
-	root.theme_override_constants = {"separation": 18}
+	root.add_theme_constant_override("separation", 18)
 
 	_master_slider = _volume_row(root, "Général", SettingsManager.master_volume, _on_master_changed)
 	_music_slider  = _volume_row(root, "Musique", SettingsManager.music_volume, _on_music_changed)
@@ -234,7 +234,7 @@ func _build_audio_tab() -> Control:
 
 func _volume_row(root: Control, label: String, value: float, cb: Callable) -> HSlider:
 	var row := HBoxContainer.new()
-	row.theme_override_constants = {"separation": 12}
+	row.add_theme_constant_override("separation", 12)
 	root.add_child(row)
 
 	var lbl := Label.new()

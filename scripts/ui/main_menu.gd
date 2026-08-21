@@ -51,7 +51,7 @@ func _build_ui() -> void:
 	center.offset_right  = 260.0
 	center.offset_top  = -320.0
 	center.offset_bottom = 320.0
-	center.theme_override_constants = {"separation": 18}
+	center.add_theme_constant_override("separation", 18)
 	add_child(center)
 
 	# Title

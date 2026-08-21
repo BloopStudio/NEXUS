@@ -66,6 +66,10 @@ shoot={
 ]
 }
 
+[gui]
+
+theme/default_font_multichannel_signed_distance_field=true
+
 [rendering]
 
 renderer/rendering_method="forward_plus"

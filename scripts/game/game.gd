@@ -28,16 +28,19 @@ func _ready() -> void:
 	# HUD (CanvasLayer — always on top)
 	var hud_script = load("res://scripts/ui/hud.gd")
 	var hud: Node = hud_script.new()
+	hud.name = "HUD"
 	add_child(hud)
 
 	# Upgrade menu (CanvasLayer — shown during UPGRADE phase)
 	var upgrade_script = load("res://scripts/ui/upgrade_menu.gd")
 	var upgrade_menu: Node = upgrade_script.new()
+	upgrade_menu.name = "UpgradeMenu"
 	add_child(upgrade_menu)
 
 	# Station at center
 	var station_script = load("res://scripts/game/station.gd")
 	_station = station_script.new()
+	_station.name = "Station"
 	_station.position = Vector2.ZERO
 	add_child(_station)
 	_station.slot_clicked.connect(upgrade_menu.on_slot_clicked)
@@ -45,11 +48,13 @@ func _ready() -> void:
 	# Idle generator (child node, host-only logic inside)
 	var idle_script = load("res://scripts/game/idle_generator.gd")
 	var idle_gen: Node = idle_script.new()
+	idle_gen.name = "IdleGenerator"
 	add_child(idle_gen)
 
 	# Wave manager
 	var wm_script = load("res://scripts/game/wave_manager.gd")
 	_wave_manager = wm_script.new()
+	_wave_manager.name = "WaveManager"
 	_wave_manager.station_node = _station
 	add_child(_wave_manager)
 	_wave_manager.wave_cleared.connect(_on_wave_cleared)
@@ -144,6 +149,12 @@ func _add_player(peer_id: int) -> void:
 		return
 	var player_script = load("res://scripts/game/player.gd")
 	var player: Node2D = player_script.new()
+	# Deterministic, peer_id-based name: dynamically-added nodes get an
+	# auto-incrementing name by default, and that counter can drift between
+	# peers (e.g. if the player list arrives in a different order), which
+	# silently breaks RPC routing for anything not on an autoload — this is
+	# what made bullets/enemies invisible to non-host players.
+	player.name = "Player_%d" % peer_id
 	player.peer_id = peer_id
 	var info: Dictionary = NetworkManager.players.get(peer_id, {})
 	player.player_name  = info.get("name",  "Player")

@@ -79,9 +79,16 @@ func _draw() -> void:
 		var aim := to_local(get_global_mouse_position()).normalized() * 18.0
 		draw_line(Vector2.ZERO, aim, player_color.lightened(0.4), 1.5)
 
-	# Name tag
-	draw_string(ThemeDB.fallback_font, Vector2(-20, -20), player_name,
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 11, C_OUTLINE)
+	# Name tag — centered above the player, with a backing pill for contrast
+	# against the background grid (a plain outlined string was easy to miss).
+	var font := ThemeDB.fallback_font
+	var font_size := 13
+	var text_size := font.get_string_size(player_name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	var tag_pos := Vector2(-text_size.x / 2.0, -30.0)
+	draw_rect(Rect2(tag_pos + Vector2(-6, -text_size.y + 2), text_size + Vector2(12, 6)),
+		Color(0.02, 0.02, 0.04, 0.65))
+	draw_string(font, tag_pos, player_name,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, player_color.lightened(0.5))
 
 
 # ─── Inner Bullet class ────────────────────────────────────────────────────────
