@@ -8,6 +8,13 @@ extends Node
 const DEFAULT_PORT := 7777
 const MAX_PLAYERS := 4
 const UPNP_DISCOVER_TIMEOUT_MS := 3000
+## ENet only calls connection_failed on an active refusal (e.g. wrong port).
+## When packets are just silently dropped — the far end unreachable, a closed
+## firewall, or (very common) the host's router doing CGNAT so its "public"
+## IP isn't actually reachable from the internet — neither connected_to_server
+## nor connection_failed ever fires, and the UI was stuck on "Connexion en
+## cours…" forever. This bounds that wait so joining always resolves.
+const JOIN_TIMEOUT_SECONDS := 10.0
 
 signal player_connected(peer_id: int)
 signal player_disconnected(peer_id: int)
@@ -41,6 +48,11 @@ var _ping_timer: float = 0.0
 var _upnp: UPNP
 var _upnp_port: int = -1
 var _upnp_mapped_public_ip: String = ""
+
+## True while a join_game() call hasn't yet resolved to success or failure —
+## guards the timeout callback against firing after the fact (e.g. once
+## already connected, or after a fresh join_game() call superseded it).
+var _joining: bool = false
 
 
 func _process(delta: float) -> void:
@@ -163,6 +175,9 @@ func join_game(ip: String, port: int = DEFAULT_PORT) -> Error:
 	multiplayer.connection_failed.connect(_on_connection_failed)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
+
+	_joining = true
+	get_tree().create_timer(JOIN_TIMEOUT_SECONDS).timeout.connect(_on_join_timeout)
 	return OK
 
 
@@ -272,13 +287,28 @@ func _on_peer_disconnected(peer_id: int) -> void:
 
 
 func _on_connected_to_server() -> void:
+	_joining = false
 	# Send our info to the host
 	register_player.rpc_id(1, local_player_info)
 	connection_succeeded.emit()
 
 
 func _on_connection_failed() -> void:
+	_joining = false
 	multiplayer.multiplayer_peer = null
+	connection_failed.emit()
+
+
+## Fires JOIN_TIMEOUT_SECONDS after join_game() if we're still waiting —
+## see the const's comment for why ENet's own signals aren't enough here.
+func _on_join_timeout() -> void:
+	if not _joining:
+		return
+	_joining = false
+	push_warning("NetworkManager: join timed out after %ss — host unreachable (firewall, CGNAT, or wrong code)." % JOIN_TIMEOUT_SECONDS)
+	if multiplayer.multiplayer_peer:
+		multiplayer.multiplayer_peer.close()
+		multiplayer.multiplayer_peer = null
 	connection_failed.emit()
 
 

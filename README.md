@@ -15,7 +15,7 @@ Jeu de survie/vagues/gestion multijoueur — défendez votre station ensemble.
 3. Partage-le à tes amis
 4. Clique "Démarrer la partie"
 
-> ℹ️ Le port UDP de l'hôte s'ouvre **automatiquement via UPnP** — dans la grande majorité des cas, aucune configuration du routeur n'est nécessaire. Si le routeur de l'hôte ne supporte pas l'UPnP (ou qu'il est désactivé), le jeu l'indique et le code de partie ne fonctionnera qu'en réseau local, sauf à ouvrir le port UDP 7777 manuellement.
+> ℹ️ Le port UDP de l'hôte s'ouvre **automatiquement via UPnP** — dans la grande majorité des cas, aucune configuration du routeur n'est nécessaire. Si le routeur de l'hôte ne supporte pas l'UPnP (ou qu'il est désactivé), le jeu l'indique et le code de partie ne fonctionnera qu'en réseau local, sauf à ouvrir le port UDP 7777 manuellement. Une connexion peut aussi échouer (après ~10s, avec un message clair plutôt que de rester bloquée sur « Connexion en cours… ») si le routeur de l'hôte fait du **CGNAT** (fréquent chez certains opérateurs mobiles/fibre) — dans ce cas l'UPnP peut réussir localement sans que l'IP publique annoncée soit réellement joignable depuis internet ; seul le réseau local de l'hôte peut alors se connecter.
 
 ### Rejoindre une partie
 1. Lance le jeu → "Rejoindre avec un code"

@@ -19,6 +19,18 @@ InstallDirRegKey HKCU "Software\NEXUS" "Install_Dir"
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
 
+; Shown in the installer .exe's own file Properties > Details tab (this is
+; what "l'éditeur" means for the Setup.exe itself — the NEXUS.exe/.pck it
+; installs don't carry this, see export_presets.cfg's comment on why).
+VIProductVersion "${VERSION}.0"
+VIFileVersion "${VERSION}.0"
+VIAddVersionKey "CompanyName" "BloopStudio"
+VIAddVersionKey "ProductName" "NEXUS"
+VIAddVersionKey "FileDescription" "Installateur NEXUS"
+VIAddVersionKey "LegalCopyright" "© BloopStudio"
+VIAddVersionKey "FileVersion" "${VERSION}"
+VIAddVersionKey "ProductVersion" "${VERSION}"
+
 Page directory
 Page instfiles
 UninstPage uninstConfirm
@@ -43,6 +55,9 @@ Section "NEXUS (requis)"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\NEXUS" "DisplayName" "NEXUS"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\NEXUS" "UninstallString" "$INSTDIR\Uninstall.exe"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\NEXUS" "DisplayVersion" "${VERSION}"
+  ; "Publisher" is what shows up next to NEXUS in Windows Settings > Apps.
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\NEXUS" "Publisher" "BloopStudio"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\NEXUS" "InstallLocation" "$INSTDIR"
 SectionEnd
 
 Section "Uninstall"

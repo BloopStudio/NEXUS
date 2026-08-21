@@ -279,7 +279,9 @@ func _on_connection_succeeded() -> void:
 
 
 func _on_connection_failed() -> void:
-	_set_status("Connexion échouée. Vérifie le code et le port.", C_ERROR)
+	_set_status("Connexion échouée (délai dépassé). Vérifie le code, ou l'hôte n'est " +
+		"pas joignable depuis internet (pare-feu, ou routeur/box en CGNAT — dans ce " +
+		"cas, seul le réseau local de l'hôte peut se connecter).", C_ERROR)
 
 
 func _on_game_starting() -> void:
