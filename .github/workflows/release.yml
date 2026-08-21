@@ -80,6 +80,18 @@ jobs:
           (cd build/linux && zip -rq "../../dist/NEXUS-${version}-linux.zip" .)
           cp build/macos/NEXUS.zip "dist/NEXUS-${version}-macos.zip"
 
+      - name: Build Windows installer (NSIS)
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq nsis
+          version="${{ steps.version.outputs.version }}"
+          makensis \
+            -DVERSION="${version}" \
+            -DSRC_DIR="${{ github.workspace }}/build/windows" \
+            -DOUT_FILE="${{ github.workspace }}/dist/NEXUS-Setup-${version}.exe" \
+            packaging/windows/installer.nsi
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
