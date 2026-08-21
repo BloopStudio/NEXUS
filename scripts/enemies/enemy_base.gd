@@ -19,12 +19,19 @@ var _hit_flash := 0.0  # seconds remaining for red flash
 ## puppet copy of this enemy in sync (position/hp ticks, and removal on death).
 var enemy_id: int = -1
 
+# Non-host peers only receive a position update ~10×/second (see
+# WaveManager._sync_enemies_rpc); snapping straight to it made movement look
+# choppy. Instead we lerp toward the latest known position every frame.
+var _net_target_pos: Vector2 = Vector2.ZERO
+const NET_INTERP_SPEED := 12.0
+
 signal died(enemy: Node2D, energy_reward: float)
 
 
 func _ready() -> void:
 	hp = max_hp
-	set_process(NetworkManager.is_host())  # only host moves enemies
+	_net_target_pos = global_position
+	set_process(true)  # host simulates movement; clients interpolate toward network updates
 
 
 func init(target_pos: Vector2) -> void:
@@ -35,18 +42,29 @@ func _process(delta: float) -> void:
 	if _dead:
 		return
 
-	# Move toward station
-	var dir := (_target - global_position).normalized()
-	global_position += dir * speed * delta
+	if NetworkManager.is_host():
+		# Move toward station
+		var dir := (_target - global_position).normalized()
+		global_position += dir * speed * delta
 
-	# Contact damage when close enough
-	if global_position.distance_to(_target) < shape_radius + 42.0:
-		_on_reach_station()
+		# Contact damage when close enough
+		if global_position.distance_to(_target) < shape_radius + 42.0:
+			_on_reach_station()
+	else:
+		global_position = global_position.lerp(_net_target_pos, clampf(delta * NET_INTERP_SPEED, 0.0, 1.0))
+		queue_redraw()
 
 	# Flash timer
 	if _hit_flash > 0.0:
 		_hit_flash -= delta
 		queue_redraw()
+
+
+## Called by WaveManager when a network position/hp update arrives for this
+## enemy (client-side only — the host is its own source of truth).
+func set_network_state(pos: Vector2, new_hp: float) -> void:
+	_net_target_pos = pos
+	hp = new_hp
 
 
 func _draw() -> void:

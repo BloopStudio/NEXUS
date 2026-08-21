@@ -26,16 +26,19 @@ func _process(delta: float) -> void:
 	if _dead:
 		return
 
-	var to_target := _target - global_position
-	if to_target.length() > STANDOFF_RADIUS:
-		global_position += to_target.normalized() * speed * delta
-	elif NetworkManager.is_host():
-		_fire_timer -= delta
-		if _fire_timer <= 0.0:
-			_fire_timer = FIRE_INTERVAL
-			GameState.damage_station(RANGED_DAMAGE)
-			AudioManager.play_sfx(AudioManager.SFX.STATION_DAMAGE, -6.0)
-			_fire_flash = 0.15
+	if NetworkManager.is_host():
+		var to_target := _target - global_position
+		if to_target.length() > STANDOFF_RADIUS:
+			global_position += to_target.normalized() * speed * delta
+		else:
+			_fire_timer -= delta
+			if _fire_timer <= 0.0:
+				_fire_timer = FIRE_INTERVAL
+				GameState.damage_station(RANGED_DAMAGE)
+				AudioManager.play_sfx(AudioManager.SFX.STATION_DAMAGE, -6.0)
+				_fire_flash = 0.15
+	else:
+		global_position = global_position.lerp(_net_target_pos, clampf(delta * NET_INTERP_SPEED, 0.0, 1.0))
 
 	if _hit_flash > 0.0:
 		_hit_flash -= delta

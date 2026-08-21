@@ -173,9 +173,7 @@ func _sync_enemies_rpc(data: Array) -> void:
 			continue
 		var e: Node2D = _enemy_registry[id]
 		if is_instance_valid(e):
-			e.global_position = Vector2(entry[1], entry[2])
-			e.hp = entry[3]
-			e.queue_redraw()
+			e.set_network_state(Vector2(entry[1], entry[2]), entry[3])
 
 
 ## Broadcast to every peer that this enemy died — this is what actually

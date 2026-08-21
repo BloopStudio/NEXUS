@@ -28,8 +28,12 @@ func _ready() -> void:
 
 
 func _build_ui() -> void:
+	# All panels are anchor-positioned (relative to the corners/center of the
+	# viewport) rather than pinned to fixed pixel coordinates, so the HUD
+	# stays correctly placed if the window is resized.
+
 	# ── Top-left: Energy ──────────────────────────────────────────────────────
-	var tl := _panel(Rect2(8, 8, 200, 40))
+	var tl := _panel_anchored(0.0, 0.0, Vector2(8, 8), Vector2(208, 48))
 	_energy_label = Label.new()
 	_energy_label.add_theme_font_size_override("font_size", 18)
 	_energy_label.add_theme_color_override("font_color", C_ACCENT)
@@ -37,7 +41,16 @@ func _build_ui() -> void:
 	tl.add_child(_energy_label)
 
 	# ── Top-center: Wave + countdown bar ─────────────────────────────────────
-	var tc_root := _panel(Rect2(480, 8, 320, 52))
+	var tc_root := PanelContainer.new()
+	tc_root.add_theme_stylebox_override("panel", _panel_style())
+	tc_root.anchor_left = 0.5
+	tc_root.anchor_right = 0.5
+	tc_root.offset_left = -160.0
+	tc_root.offset_right = 160.0
+	tc_root.offset_top = 8.0
+	tc_root.offset_bottom = 60.0
+	add_child(tc_root)
+
 	var tc_vbox := VBoxContainer.new()
 	tc_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	tc_root.add_child(tc_vbox)
@@ -52,7 +65,7 @@ func _build_ui() -> void:
 	# Countdown bar background
 	_timer_bar_bg = ColorRect.new()
 	_timer_bar_bg.color = Color(0.12, 0.12, 0.2)
-	_timer_bar_bg.custom_minimum_size = Vector2(300, 10)
+	_timer_bar_bg.custom_minimum_size = Vector2(0, 10)
 	tc_vbox.add_child(_timer_bar_bg)
 
 	# Countdown bar fill (positioned inside bg)
@@ -62,7 +75,7 @@ func _build_ui() -> void:
 	_timer_bar.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 	# ── Top-right: Station HP ─────────────────────────────────────────────────
-	var tr := _panel(Rect2(1072, 8, 200, 52))
+	var tr := _panel_anchored(1.0, 0.0, Vector2(-208, 8), Vector2(-8, 60))
 	var tr_vbox := VBoxContainer.new()
 	tr.add_child(tr_vbox)
 
@@ -74,7 +87,7 @@ func _build_ui() -> void:
 
 	_station_bar_bg = ColorRect.new()
 	_station_bar_bg.color = Color(0.12, 0.12, 0.2)
-	_station_bar_bg.custom_minimum_size = Vector2(184, 10)
+	_station_bar_bg.custom_minimum_size = Vector2(0, 10)
 	tr_vbox.add_child(_station_bar_bg)
 
 	_station_bar = ColorRect.new()
@@ -83,16 +96,20 @@ func _build_ui() -> void:
 	_station_bar.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 	# ── Bottom-left: Player list ──────────────────────────────────────────────
-	var bl := _panel(Rect2(8, 580, 200, 132))
+	var bl := _panel_anchored(0.0, 1.0, Vector2(8, -140), Vector2(208, -8))
 	_player_list = VBoxContainer.new()
 	bl.add_child(_player_list)
 	_refresh_player_list()
 
-	# ── Top-right corner: leave the match without quitting the game ──────────
+	# ── Top-right, below station HP: leave the match without quitting ────────
 	var quit_btn := Button.new()
 	quit_btn.text = "✕ Quitter"
-	quit_btn.position = Vector2(1072, 64)
-	quit_btn.custom_minimum_size = Vector2(200, 32)
+	quit_btn.anchor_left = 1.0
+	quit_btn.anchor_right = 1.0
+	quit_btn.offset_left = -208.0
+	quit_btn.offset_right = -8.0
+	quit_btn.offset_top = 68.0
+	quit_btn.offset_bottom = 100.0
 	quit_btn.add_theme_font_size_override("font_size", 13)
 	quit_btn.pressed.connect(_on_quit_pressed)
 	add_child(quit_btn)
@@ -112,6 +129,7 @@ func _connect_signals() -> void:
 
 	NetworkManager.player_connected.connect(func(_id): _refresh_player_list())
 	NetworkManager.player_disconnected.connect(func(_id): _refresh_player_list())
+	NetworkManager.players_updated.connect(_refresh_player_list)
 
 
 func _process(_delta: float) -> void:
@@ -165,7 +183,16 @@ func _refresh_player_list() -> void:
 		lbl.add_theme_font_size_override("font_size", 13)
 		var col: Color = info.get("color", C_ACCENT)
 		lbl.add_theme_color_override("font_color", col)
-		lbl.text = "● %s" % info.get("name", "Player")
+
+		var suffix := ""
+		if peer_id == NetworkManager.HOST_PEER_ID:
+			suffix = "  👑 hôte"
+		elif info.has("ping_ms"):
+			suffix = "  %dms" % int(info["ping_ms"])
+		else:
+			suffix = "  …ms"
+
+		lbl.text = "● %s%s" % [info.get("name", "Player"), suffix]
 		_player_list.add_child(lbl)
 
 
@@ -179,10 +206,28 @@ func _on_quit_pressed() -> void:
 
 # ─── Helper ───────────────────────────────────────────────────────────────────
 
-func _panel(rect: Rect2) -> Control:
+## Anchored panel: `anchor` picks the corner (0,0 = top-left, 1,0 = top-right,
+## 0,1 = bottom-left, ...) and `top_left_offset`/`bottom_right_offset` are
+## pixel offsets from that anchor point — this is what keeps HUD panels
+## correctly placed when the window is resized, instead of the fixed pixel
+## coordinates the HUD used to be built with (which only looked right at the
+## project's default 1280×720).
+func _panel_anchored(anchor_x: float, anchor_y: float, top_left_offset: Vector2, bottom_right_offset: Vector2) -> Control:
 	var bg := ColorRect.new()
 	bg.color = C_BG
-	bg.position = rect.position
-	bg.size = rect.size
+	bg.anchor_left = anchor_x
+	bg.anchor_right = anchor_x
+	bg.anchor_top = anchor_y
+	bg.anchor_bottom = anchor_y
+	bg.offset_left = top_left_offset.x
+	bg.offset_top = top_left_offset.y
+	bg.offset_right = bottom_right_offset.x
+	bg.offset_bottom = bottom_right_offset.y
 	add_child(bg)
 	return bg
+
+
+func _panel_style() -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = C_BG
+	return sb

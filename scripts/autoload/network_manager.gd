@@ -24,15 +24,36 @@ signal upnp_status(success: bool)
 ## this is what actually moves everyone from the main menu into the game
 ## scene together, instead of only the host who clicked "Démarrer".
 signal game_starting()
+## Emitted whenever the local copy of `players` changes for a reason other
+## than a peer joining/leaving (e.g. a fresh ping reading) — connect this if
+## you display more than just the join/leave events (see HUD player list).
+signal players_updated()
 
 # Local player info sent to peers on join
 var local_player_info := {"name": "Player", "color": Color.CYAN}
-# All players: peer_id -> info dict
+# All players: peer_id -> info dict (peer id 1 is always the host)
 var players := {}
+
+const HOST_PEER_ID := 1
+const PING_INTERVAL := 1.5
+var _ping_timer: float = 0.0
 
 var _upnp: UPNP
 var _upnp_port: int = -1
 var _upnp_mapped_public_ip: String = ""
+
+
+func _process(delta: float) -> void:
+	# Host-only: periodically ping every connected client so everyone's
+	# player list can show a rough latency-to-host figure.
+	if multiplayer.multiplayer_peer == null or not is_host():
+		return
+	_ping_timer -= delta
+	if _ping_timer <= 0.0:
+		_ping_timer = PING_INTERVAL
+		for peer_id in players.keys():
+			if peer_id != HOST_PEER_ID:
+				_ping_rpc.rpc_id(peer_id, Time.get_ticks_msec())
 var _upnp_thread: Thread = null
 
 
@@ -188,10 +209,13 @@ func register_player(info: Dictionary) -> void:
 	_send_player_list.rpc_id(sender, players)
 
 
-## Host → new client: here's the full player list
+## Host → client(s): here's the full player list. Sent to just the joining
+## peer on connect, and re-broadcast to everyone whenever it changes (e.g. a
+## fresh ping reading) so every player list stays in sync.
 @rpc("authority", "reliable")
 func _send_player_list(list: Dictionary) -> void:
 	players = list
+	players_updated.emit()
 
 
 ## Broadcast: a player disconnected, remove from list
@@ -199,6 +223,27 @@ func _send_player_list(list: Dictionary) -> void:
 func _remove_player(peer_id: int) -> void:
 	players.erase(peer_id)
 	player_disconnected.emit(peer_id)
+
+
+# ─── Ping ────────────────────────────────────────────────────────────────────
+
+## Host → client: "what's your round-trip time to me?" — the client just
+## echoes the timestamp straight back.
+@rpc("authority", "unreliable")
+func _ping_rpc(sent_at_msec: int) -> void:
+	_pong_rpc.rpc_id(HOST_PEER_ID, sent_at_msec)
+
+
+## Client → host: pong reply: this let get_ticks_msec()-sent_at give the RTT.
+@rpc("any_peer", "unreliable")
+func _pong_rpc(sent_at_msec: int) -> void:
+	if not is_host():
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	if not players.has(sender):
+		return
+	players[sender]["ping_ms"] = Time.get_ticks_msec() - sent_at_msec
+	_send_player_list.rpc(players)
 
 
 ## Host only: tell every connected peer (host included, via call_local) to
