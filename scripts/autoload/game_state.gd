@@ -53,6 +53,97 @@ var module_slots: Array[Dictionary] = []
 # ─── Init ──────────────────────────────────────────────────────────────────────
 func _ready() -> void:
 	_init_slots()
+	set_process(true)
+
+
+# ─── Network sync (host → clients) ─────────────────────────────────────────────
+# The host is authoritative: it periodically pushes a full snapshot so every
+# client's local copy of the shared station state stays in sync. Without
+# this, building/upgrading or taking station damage was only ever visible
+# to whichever peer triggered it.
+var _sync_timer: float = 0.0
+const SYNC_INTERVAL := 0.15
+
+
+func _process(delta: float) -> void:
+	if not NetworkManager.is_host():
+		return
+	_sync_timer -= delta
+	if _sync_timer <= 0.0:
+		_sync_timer = SYNC_INTERVAL
+		_broadcast_snapshot()
+
+
+func _broadcast_snapshot() -> void:
+	if not multiplayer.has_multiplayer_peer():
+		return
+	_apply_snapshot_rpc.rpc(energy, wave_number, station_hp, station_max_hp, int(phase), module_slots)
+
+
+@rpc("authority", "reliable")
+func _apply_snapshot_rpc(e: float, w: int, hp: float, max_hp: float, ph: int, slots: Array) -> void:
+	station_max_hp = max_hp
+	wave_number = w
+	energy = e
+	station_hp = hp
+
+	# Only touch module_slots (and emit its signal) when something actually
+	# changed — this snapshot arrives ~7×/second, and module_slots_changed
+	# triggers a full rebuild of the build/upgrade panel. Emitting it every
+	# tick regardless of content would make building/upgrading on a client
+	# nearly impossible, the exact same class of bug as the original
+	# "menu rebuilt every energy tick" issue, just via the network path.
+	if not _slots_equal(module_slots, slots):
+		module_slots.clear()
+		for s in slots:
+			module_slots.append(s as Dictionary)
+		module_slots_changed.emit(-1)  # -1 = "refresh everything"
+
+	# Same reasoning for phase — UI resets its selection on phase_changed.
+	if ph != int(phase):
+		set_phase(ph as Phase)
+
+
+func _slots_equal(a: Array, b: Array) -> bool:
+	if a.size() != b.size():
+		return false
+	for i in a.size():
+		var sa: Dictionary = a[i]
+		var sb: Dictionary = b[i]
+		if sa.get("type") != sb.get("type") or sa.get("level") != sb.get("level"):
+			return false
+	return true
+
+
+## Client → host: ask to build/upgrade a slot. On the host this just applies
+## immediately (it calls itself); the next periodic snapshot then carries
+## the result to everyone.
+func request_build_module(slot_index: int, type: ModuleType) -> void:
+	if NetworkManager.is_host():
+		build_module(slot_index, type)
+	else:
+		_request_build_rpc.rpc_id(1, slot_index, int(type))
+
+
+@rpc("any_peer", "reliable")
+func _request_build_rpc(slot_index: int, type: int) -> void:
+	if not multiplayer.is_server():
+		return
+	build_module(slot_index, type as ModuleType)
+
+
+func request_upgrade_module(slot_index: int) -> void:
+	if NetworkManager.is_host():
+		upgrade_module(slot_index)
+	else:
+		_request_upgrade_rpc.rpc_id(1, slot_index)
+
+
+@rpc("any_peer", "reliable")
+func _request_upgrade_rpc(slot_index: int) -> void:
+	if not multiplayer.is_server():
+		return
+	upgrade_module(slot_index)
 
 
 func _init_slots() -> void:

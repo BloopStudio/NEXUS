@@ -15,6 +15,10 @@ var _target: Vector2 = Vector2.ZERO  # station global pos
 var _dead := false
 var _hit_flash := 0.0  # seconds remaining for red flash
 
+## Network id assigned by the host's WaveManager, used to keep every peer's
+## puppet copy of this enemy in sync (position/hp ticks, and removal on death).
+var enemy_id: int = -1
+
 signal died(enemy: Node2D, energy_reward: float)
 
 
@@ -81,14 +85,22 @@ func _on_reach_station() -> void:
 	_die()
 
 
+## Host-only: marks this enemy as dead and reports it for the reward/wave
+## bookkeeping. Actual removal (sound, particles, queue_free) happens
+## uniformly on every peer via WaveManager's death broadcast — see
+## play_death_effects() — so hosts and clients see the exact same thing.
 func _die() -> void:
 	if _dead:
 		return
 	_dead = true
+	died.emit(self, reward_energy)
+
+
+## Called on every peer (via WaveManager's networked removal) right before
+## this enemy is freed.
+func play_death_effects() -> void:
 	AudioManager.play_sfx(AudioManager.SFX.ENEMY_DEATH, -4.0)
 	_spawn_death_burst()
-	died.emit(self, reward_energy)
-	queue_free()
 
 
 ## Small one-shot particle burst matching the enemy's color, left behind

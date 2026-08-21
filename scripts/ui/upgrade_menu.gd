@@ -200,17 +200,18 @@ func _refresh_affordability() -> void:
 func _build(mtype: GameState.ModuleType) -> void:
 	if _selected_slot < 0:
 		return
-	if GameState.build_module(_selected_slot, mtype):
-		AudioManager.play_sfx(AudioManager.SFX.BUILD)
-		_rebuild_panel_contents()
+	AudioManager.play_sfx(AudioManager.SFX.BUILD)
+	GameState.request_build_module(_selected_slot, mtype)
+	# The panel refreshes itself via _on_module_slots_changed once the
+	# change actually lands (instant for the host, one round-trip for a
+	# client) — no need to rebuild here.
 
 
 func _upgrade() -> void:
 	if _selected_slot < 0:
 		return
-	if GameState.upgrade_module(_selected_slot):
-		AudioManager.play_sfx(AudioManager.SFX.UPGRADE)
-		_rebuild_panel_contents()
+	AudioManager.play_sfx(AudioManager.SFX.UPGRADE)
+	GameState.request_upgrade_module(_selected_slot)
 
 
 # ─── Signal handlers ────────────────────────────────────────────────────────────
@@ -225,10 +226,11 @@ func _on_energy_changed(_val: float) -> void:
 	_refresh_affordability()
 
 
-## A slot's contents changed elsewhere (e.g. another player built/upgraded it
-## over the network) — keep the panel in sync if it's the one being viewed.
+## A slot's contents changed — either locally, another player built/upgraded
+## it over the network, or a full snapshot just landed (-1 = refresh all).
+## Keep the panel in sync if it's showing the affected slot.
 func _on_module_slots_changed(slot_index: int) -> void:
-	if slot_index == _selected_slot and _panel.visible:
+	if _panel.visible and (slot_index == _selected_slot or slot_index == -1):
 		_rebuild_panel_contents()
 
 

@@ -40,6 +40,7 @@ func _ready() -> void:
 	_turret_timers.resize(8)
 	_turret_timers.fill(0.0)
 	GameState.station_health_changed.connect(func(_v): queue_redraw())
+	GameState.module_slots_changed.connect(func(_i): queue_redraw())
 
 	set_process(true)
 	set_process_input(true)

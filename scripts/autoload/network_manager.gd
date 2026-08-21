@@ -33,6 +33,7 @@ var players := {}
 var _upnp: UPNP
 var _upnp_port: int = -1
 var _upnp_mapped_public_ip: String = ""
+var _upnp_thread: Thread = null
 
 
 # ─── Hosting ───────────────────────────────────────────────────────────────────
@@ -56,33 +57,47 @@ func host_game(port: int = DEFAULT_PORT) -> Error:
 
 
 ## Attempts to open the port automatically on the host's router via UPnP/IGD.
-## Runs in the background; connect to `upnp_status` to know the outcome.
-## Zero external server involved — this only talks to the local router.
+## UPnP discovery can take up to ~3s (or longer on some routers), so this
+## runs on a background Thread — doing it on the main thread used to freeze
+## the whole game (rendering, input, networking) every time someone hosted.
+## Connect to `upnp_status` to know the outcome.
 func _try_setup_upnp(port: int) -> void:
-	_upnp = UPNP.new()
-	var discover_result := _upnp.discover(UPNP_DISCOVER_TIMEOUT_MS)
+	_upnp_thread = Thread.new()
+	_upnp_thread.start(_upnp_worker.bind(port))
+
+
+func _upnp_worker(port: int) -> void:
+	var upnp := UPNP.new()
+	var success := false
+	var mapped_ip := ""
+
+	var discover_result := upnp.discover(UPNP_DISCOVER_TIMEOUT_MS)
 	if discover_result != UPNP.UPNP_RESULT_SUCCESS:
 		push_warning("NetworkManager: UPnP discovery failed (%d) — router may not support UPnP or it's disabled." % discover_result)
-		upnp_status.emit(false)
-		return
-
-	if _upnp.get_gateway() == null or not _upnp.get_gateway().is_valid_gateway():
+	elif upnp.get_gateway() == null or not upnp.get_gateway().is_valid_gateway():
 		push_warning("NetworkManager: no valid UPnP gateway found on the network.")
-		upnp_status.emit(false)
-		return
+	else:
+		upnp.delete_port_mapping(port, "UDP")  # clean up any stale mapping from a previous session
+		var map_result := upnp.add_port_mapping(port, port, "NEXUS", "UDP", 0)
+		if map_result != UPNP.UPNP_RESULT_SUCCESS:
+			push_warning("NetworkManager: UPnP port mapping failed (%d)." % map_result)
+		else:
+			success = true
+			mapped_ip = upnp.query_external_address()
 
-	# Clean up any stale mapping from a previous session first.
-	_upnp.delete_port_mapping(port, "UDP")
+	call_deferred("_on_upnp_worker_done", upnp, port, success, mapped_ip)
 
-	var map_result := _upnp.add_port_mapping(port, port, "NEXUS", "UDP", 0)
-	if map_result != UPNP.UPNP_RESULT_SUCCESS:
-		push_warning("NetworkManager: UPnP port mapping failed (%d)." % map_result)
-		upnp_status.emit(false)
-		return
 
-	_upnp_port = port
-	_upnp_mapped_public_ip = _upnp.query_external_address()
-	upnp_status.emit(true)
+func _on_upnp_worker_done(upnp: UPNP, port: int, success: bool, mapped_ip: String) -> void:
+	if _upnp_thread:
+		_upnp_thread.wait_to_finish()
+		_upnp_thread = null
+
+	if success:
+		_upnp = upnp
+		_upnp_port = port
+		_upnp_mapped_public_ip = mapped_ip
+	upnp_status.emit(success)
 
 
 ## Returns the public IP UPnP reported for the current port mapping, or an
@@ -151,6 +166,9 @@ func disconnect_from_game() -> void:
 
 
 func _teardown_upnp() -> void:
+	if _upnp_thread != null:
+		_upnp_thread.wait_to_finish()
+		_upnp_thread = null
 	if _upnp != null and _upnp_port != -1:
 		_upnp.delete_port_mapping(_upnp_port, "UDP")
 	_upnp = null
@@ -245,6 +263,15 @@ func _disconnect_signals() -> void:
 		multiplayer.connection_failed.disconnect(_on_connection_failed)
 	if multiplayer.server_disconnected.is_connected(_on_server_disconnected):
 		multiplayer.server_disconnected.disconnect(_on_server_disconnected)
+
+
+## Make sure a still-running UPnP thread is always joined before the engine
+## tears this node down — otherwise closing the game while a background
+## UPnP discovery is in flight crashes on shutdown.
+func _exit_tree() -> void:
+	if _upnp_thread != null:
+		_upnp_thread.wait_to_finish()
+		_upnp_thread = null
 
 
 func is_host() -> bool:

@@ -77,6 +77,10 @@ func _ready() -> void:
 	_last_station_hp = GameState.station_hp
 	GameState.station_health_changed.connect(_on_station_hp_changed)
 
+	# If the host leaves (or a client's connection drops), don't leave
+	# everyone else stranded in a dead game scene.
+	NetworkManager.server_disconnected.connect(_on_server_disconnected)
+
 
 func _process(delta: float) -> void:
 	if _notice_timer > 0.0:
@@ -171,6 +175,12 @@ func get_nearest_enemy(pos: Vector2) -> Node2D:
 
 func _on_wave_cleared() -> void:
 	_show_notice("VAGUE TERMINÉE", 2.5)
+
+
+func _on_server_disconnected() -> void:
+	_show_notice("HÔTE DÉCONNECTÉ", 1.5)
+	await get_tree().create_timer(1.0).timeout
+	SceneLoader.change_scene("res://scenes/main_menu.tscn")
 
 
 func _on_game_over() -> void:

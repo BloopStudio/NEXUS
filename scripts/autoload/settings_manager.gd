@@ -80,7 +80,9 @@ func apply_graphics() -> void:
 	if not fullscreen:
 		DisplayServer.window_set_size(window_size)
 	Engine.max_fps = 0
-	get_viewport().vsync_mode = DisplayServer.VSYNC_ENABLED if vsync else DisplayServer.VSYNC_DISABLED
+	DisplayServer.window_set_vsync_mode(
+		DisplayServer.VSYNC_ENABLED if vsync else DisplayServer.VSYNC_DISABLED
+	)
 
 
 func apply_audio() -> void:

@@ -88,6 +88,15 @@ func _build_ui() -> void:
 	bl.add_child(_player_list)
 	_refresh_player_list()
 
+	# ── Top-right corner: leave the match without quitting the game ──────────
+	var quit_btn := Button.new()
+	quit_btn.text = "✕ Quitter"
+	quit_btn.position = Vector2(1072, 64)
+	quit_btn.custom_minimum_size = Vector2(200, 32)
+	quit_btn.add_theme_font_size_override("font_size", 13)
+	quit_btn.pressed.connect(_on_quit_pressed)
+	add_child(quit_btn)
+
 
 # ─── Signal connections ────────────────────────────────────────────────────────
 
@@ -158,6 +167,14 @@ func _refresh_player_list() -> void:
 		lbl.add_theme_color_override("font_color", col)
 		lbl.text = "● %s" % info.get("name", "Player")
 		_player_list.add_child(lbl)
+
+
+# ─── Leaving the match ──────────────────────────────────────────────────────────
+
+func _on_quit_pressed() -> void:
+	AudioManager.play_sfx(AudioManager.SFX.UI_CLICK)
+	NetworkManager.disconnect_from_game()
+	SceneLoader.change_scene("res://scenes/main_menu.tscn")
 
 
 # ─── Helper ───────────────────────────────────────────────────────────────────
