@@ -1,0 +1,171 @@
+## HUD — in-game heads-up display
+## All drawn with Control nodes created in code (no .tscn needed).
+extends CanvasLayer
+
+const C_ACCENT  := Color(0.0, 0.831, 1.0)
+const C_WHITE   := Color(1.0, 1.0, 1.0)
+const C_DIM     := Color(0.6, 0.6, 0.7)
+const C_BG      := Color(0.05, 0.05, 0.09, 0.82)
+const C_HP_OK   := Color(0.2, 0.9, 0.3)
+const C_HP_LOW  := Color(1.0, 0.3, 0.1)
+
+var _energy_label:  Label      = null
+var _wave_label:    Label      = null
+var _timer_bar:     ColorRect  = null
+var _timer_bar_bg:  ColorRect  = null
+var _timer_max:     float      = 20.0
+var _timer_value:   float      = 20.0
+var _station_label: Label      = null
+var _station_bar:   ColorRect  = null
+var _station_bar_bg: ColorRect = null
+var _player_list:   VBoxContainer = null
+
+
+func _ready() -> void:
+	layer = 10
+	_build_ui()
+	_connect_signals()
+
+
+func _build_ui() -> void:
+	# ── Top-left: Energy ──────────────────────────────────────────────────────
+	var tl := _panel(Rect2(8, 8, 200, 40))
+	_energy_label = Label.new()
+	_energy_label.add_theme_font_size_override("font_size", 18)
+	_energy_label.add_theme_color_override("font_color", C_ACCENT)
+	_energy_label.text = "ÉNERGIE: 50"
+	tl.add_child(_energy_label)
+
+	# ── Top-center: Wave + countdown bar ─────────────────────────────────────
+	var tc_root := _panel(Rect2(480, 8, 320, 52))
+	var tc_vbox := VBoxContainer.new()
+	tc_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tc_root.add_child(tc_vbox)
+
+	_wave_label = Label.new()
+	_wave_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_wave_label.add_theme_font_size_override("font_size", 18)
+	_wave_label.add_theme_color_override("font_color", C_WHITE)
+	_wave_label.text = "VAGUE 0"
+	tc_vbox.add_child(_wave_label)
+
+	# Countdown bar background
+	_timer_bar_bg = ColorRect.new()
+	_timer_bar_bg.color = Color(0.12, 0.12, 0.2)
+	_timer_bar_bg.custom_minimum_size = Vector2(300, 10)
+	tc_vbox.add_child(_timer_bar_bg)
+
+	# Countdown bar fill (positioned inside bg)
+	_timer_bar = ColorRect.new()
+	_timer_bar.color = C_ACCENT
+	_timer_bar_bg.add_child(_timer_bar)
+	_timer_bar.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
+	# ── Top-right: Station HP ─────────────────────────────────────────────────
+	var tr := _panel(Rect2(1072, 8, 200, 52))
+	var tr_vbox := VBoxContainer.new()
+	tr.add_child(tr_vbox)
+
+	_station_label = Label.new()
+	_station_label.add_theme_font_size_override("font_size", 15)
+	_station_label.add_theme_color_override("font_color", C_WHITE)
+	_station_label.text = "STATION 500/500"
+	tr_vbox.add_child(_station_label)
+
+	_station_bar_bg = ColorRect.new()
+	_station_bar_bg.color = Color(0.12, 0.12, 0.2)
+	_station_bar_bg.custom_minimum_size = Vector2(184, 10)
+	tr_vbox.add_child(_station_bar_bg)
+
+	_station_bar = ColorRect.new()
+	_station_bar.color = C_HP_OK
+	_station_bar_bg.add_child(_station_bar)
+	_station_bar.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
+	# ── Bottom-left: Player list ──────────────────────────────────────────────
+	var bl := _panel(Rect2(8, 580, 200, 132))
+	_player_list = VBoxContainer.new()
+	bl.add_child(_player_list)
+	_refresh_player_list()
+
+
+# ─── Signal connections ────────────────────────────────────────────────────────
+
+func _connect_signals() -> void:
+	GameState.energy_changed.connect(_on_energy_changed)
+	GameState.wave_changed.connect(_on_wave_changed)
+	GameState.station_health_changed.connect(_on_station_health_changed)
+	GameState.phase_changed.connect(_on_phase_changed)
+
+	# Wave manager countdown
+	# We listen on _process instead to avoid coupling to WaveManager instance
+	set_process(true)
+
+	NetworkManager.player_connected.connect(func(_id): _refresh_player_list())
+	NetworkManager.player_disconnected.connect(func(_id): _refresh_player_list())
+
+
+func _process(_delta: float) -> void:
+	# Update countdown bar each frame (WaveManager fires a signal but we poll for simplicity)
+	pass
+
+
+# ─── Signal handlers ──────────────────────────────────────────────────────────
+
+func _on_energy_changed(val: float) -> void:
+	_energy_label.text = "ÉNERGIE: %d" % int(val)
+
+
+func _on_wave_changed(num: int) -> void:
+	_wave_label.text = "VAGUE %d" % num
+
+
+func _on_station_health_changed(hp: float) -> void:
+	var ratio := hp / GameState.station_max_hp
+	_station_label.text = "STATION %d/%d" % [int(hp), int(GameState.station_max_hp)]
+	_station_bar.anchor_right = ratio
+	_station_bar.color = C_HP_OK.lerp(C_HP_LOW, 1.0 - ratio)
+
+
+func _on_phase_changed(phase: GameState.Phase) -> void:
+	match phase:
+		GameState.Phase.BUILD:
+			_wave_label.add_theme_color_override("font_color", C_ACCENT)
+			_timer_bar.color = C_ACCENT
+		GameState.Phase.WAVE:
+			_wave_label.add_theme_color_override("font_color", Color(1.0, 0.5, 0.1))
+			_timer_bar.anchor_right = 0.0  # Hide bar during wave
+
+
+func update_build_timer(seconds_left: float, max_time: float) -> void:
+	_timer_max = maxf(1.0, max_time)
+	_timer_value = seconds_left
+	var ratio := clampf(seconds_left / _timer_max, 0.0, 1.0)
+	_timer_bar.anchor_right = ratio
+
+
+# ─── Player list ──────────────────────────────────────────────────────────────
+
+func _refresh_player_list() -> void:
+	for child in _player_list.get_children():
+		child.queue_free()
+
+	for peer_id in NetworkManager.players:
+		var info: Dictionary = NetworkManager.players[peer_id]
+		var lbl := Label.new()
+		lbl.add_theme_font_size_override("font_size", 13)
+		var col: Color = info.get("color", C_ACCENT)
+		lbl.add_theme_color_override("font_color", col)
+		lbl.text = "● %s" % info.get("name", "Player")
+		_player_list.add_child(lbl)
+
+
+# ─── Helper ───────────────────────────────────────────────────────────────────
+
+func _panel(rect: Rect2) -> Control:
+	var bg := ColorRect.new()
+	bg.color = C_BG
+	bg.position = rect.position
+	bg.size = rect.size
+	add_child(bg)
+	return bg

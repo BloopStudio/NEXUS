@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <rect width="128" height="128" fill="#0a0a0f" rx="16"/>
+  <!-- Hexagon station -->
+  <polygon points="64,20 98,42 98,86 64,108 30,86 30,42" fill="none" stroke="#00d4ff" stroke-width="3"/>
+  <!-- Inner core -->
+  <circle cx="64" cy="64" r="16" fill="#00d4ff" opacity="0.8"/>
+  <!-- Energy lines -->
+  <line x1="64" y1="20" x2="64" y2="48" stroke="#00d4ff" stroke-width="1.5" opacity="0.5"/>
+  <line x1="98" y1="42" x2="78" y2="54" stroke="#00d4ff" stroke-width="1.5" opacity="0.5"/>
+  <line x1="98" y1="86" x2="78" y2="74" stroke="#00d4ff" stroke-width="1.5" opacity="0.5"/>
+  <line x1="64" y1="108" x2="64" y2="80" stroke="#00d4ff" stroke-width="1.5" opacity="0.5"/>
+  <line x1="30" y1="86" x2="50" y2="74" stroke="#00d4ff" stroke-width="1.5" opacity="0.5"/>
+  <line x1="30" y1="42" x2="50" y2="54" stroke="#00d4ff" stroke-width="1.5" opacity="0.5"/>
+  <!-- N letter -->
+  <text x="50" y="72" font-family="monospace" font-size="22" font-weight="bold" fill="#ffffff">N</text>
+</svg>
