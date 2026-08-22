@@ -17,7 +17,7 @@ var vsync: bool = true
 var window_size: Vector2i = Vector2i(1280, 720)
 var show_fps: bool = false
 var fps_limit: int = 0  # 0 = unlimited
-const FPS_LIMIT_OPTIONS := [0, 30, 60, 120, 144]
+const FPS_LIMIT_OPTIONS := [0, 30, 60, 120, 144, 240, 360]
 
 var master_volume: float = 1.0
 var music_volume: float = 0.8
