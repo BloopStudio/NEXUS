@@ -75,6 +75,7 @@ func get_module_effect_text(mtype: int, level: int) -> String:
 			return MODULE_EFFECTS.get(mtype, {}).get(level, "")
 
 var _hint_label: Label = null
+var _skill_panel: PanelContainer = null
 var _skill_tree_btn: Button = null
 var _skill_tree_panel: PanelContainer = null
 var _slot_unlock_btn: Button = null
@@ -126,22 +127,22 @@ func _build_ui() -> void:
 	# Button here used to fully darken (via `modulate`) while unaffordable,
 	# which made it blend into the dark background almost completely and read
 	# as "not there" to players who hadn't saved up energy yet.
-	var skill_panel := PanelContainer.new()
-	skill_panel.add_theme_stylebox_override("panel", _skill_panel_style())
-	skill_panel.anchor_left = 0.0
-	skill_panel.anchor_right = 0.0
-	skill_panel.offset_left = 8.0
-	skill_panel.offset_right = 236.0
-	skill_panel.offset_top = 64.0
-	skill_panel.offset_bottom = 100.0
-	add_child(skill_panel)
+	_skill_panel = PanelContainer.new()
+	_skill_panel.add_theme_stylebox_override("panel", _skill_panel_style())
+	_skill_panel.anchor_left = 0.0
+	_skill_panel.anchor_right = 0.0
+	_skill_panel.offset_left = 8.0
+	_skill_panel.offset_right = 236.0
+	_skill_panel.offset_top = 64.0
+	_skill_panel.offset_bottom = 100.0
+	add_child(_skill_panel)
 
 	_skill_tree_btn = Button.new()
 	_skill_tree_btn.flat = true
 	_skill_tree_btn.text = "🌳 Arbre de compétences"
 	_skill_tree_btn.add_theme_font_size_override("font_size", 13)
 	_skill_tree_btn.pressed.connect(_on_skill_tree_toggle_pressed)
-	skill_panel.add_child(_skill_tree_btn)
+	_skill_panel.add_child(_skill_tree_btn)
 
 	_build_skill_tree_panel()
 
@@ -380,7 +381,10 @@ func _on_skill_tree_changed() -> void:
 func _update_visibility() -> void:
 	var show := GameState.phase == GameState.Phase.BUILD or GameState.phase == GameState.Phase.UPGRADE
 	_hint_label.visible = show and _selected_slot < 0
-	_skill_tree_btn.visible = show
+	# Hide the whole bordered panel, not just the button inside it — toggling
+	# only the button used to leave its empty background/border on-screen
+	# during a wave (nothing else clears a PanelContainer's own stylebox).
+	_skill_panel.visible = show
 	if not show:
 		_panel.visible = false
 		_skill_tree_panel.visible = false
