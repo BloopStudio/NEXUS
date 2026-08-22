@@ -121,7 +121,7 @@ func _build_ui() -> void:
 	spell_row.anchor_bottom = 1.0
 	spell_row.offset_left = -60.0
 	spell_row.offset_right = 60.0
-	spell_row.offset_top = -68.0
+	spell_row.offset_top = -92.0
 	spell_row.offset_bottom = -8.0
 	spell_row.add_theme_constant_override("separation", 8)
 	add_child(spell_row)
@@ -130,6 +130,18 @@ func _build_ui() -> void:
 		var slot_col := VBoxContainer.new()
 		slot_col.add_theme_constant_override("separation", 2)
 		spell_row.add_child(slot_col)
+
+		# Level-up button — placed ABOVE its spell's icon (rather than below)
+		# so it reads as "what upgrades this slot" sitting over the slot it
+		# affects. Only meaningfully clickable during BUILD/UPGRADE (spends
+		# shared team energy, same rhythm as building modules).
+		var captured_i: int = i
+		var levelup_btn := Button.new()
+		levelup_btn.custom_minimum_size = Vector2(0, 20)
+		levelup_btn.add_theme_font_size_override("font_size", 10)
+		levelup_btn.pressed.connect(func(): _on_spell_levelup_pressed(captured_i))
+		slot_col.add_child(levelup_btn)
+		_spell_levelup_buttons.append(levelup_btn)
 
 		var slot := PanelContainer.new()
 		slot.add_theme_stylebox_override("panel", _panel_style())
@@ -179,16 +191,6 @@ func _build_ui() -> void:
 		key_lbl.offset_left = -14.0
 		key_lbl.offset_top = -2.0
 		slot_stack.add_child(key_lbl)
-
-		# Level-up button — only meaningfully clickable during BUILD/UPGRADE
-		# (spends shared team energy, same rhythm as building modules).
-		var captured_i: int = i
-		var levelup_btn := Button.new()
-		levelup_btn.custom_minimum_size = Vector2(0, 20)
-		levelup_btn.add_theme_font_size_override("font_size", 10)
-		levelup_btn.pressed.connect(func(): _on_spell_levelup_pressed(captured_i))
-		slot_col.add_child(levelup_btn)
-		_spell_levelup_buttons.append(levelup_btn)
 
 	# ── Top-right, below station HP: settings + leave the match ──────────────
 	var settings_btn := Button.new()

@@ -288,6 +288,41 @@ func _tick_module_disable_timers(delta: float) -> void:
 			module_slots_changed.emit(i)
 
 
+## Human-readable "+X% (synergie ...)" suffix describing the placement
+## bonus a built module at `slot_index` currently gets from its ring
+## neighbors, or "" if its type doesn't have one or no neighbor qualifies.
+## Shared by station.gd's hover tooltip and upgrade_menu.gd's build/upgrade
+## panel, so both always read the exact same numbers.
+func get_synergy_note(slot_index: int) -> String:
+	if slot_index < 0 or slot_index >= module_slots.size():
+		return ""
+	return get_synergy_note_for_type(slot_index, module_slots[slot_index]["type"])
+
+
+## Same as get_synergy_note(), but for a hypothetical `mtype` at `slot_index`
+## instead of whatever's actually built there — used to preview the bonus a
+## module WOULD get before you spend energy building it (the ring-neighbor
+## check only looks at the neighbors' types, so it works on an empty slot
+## exactly the same way).
+func get_synergy_note_for_type(slot_index: int, mtype: int) -> String:
+	if slot_index < 0 or slot_index >= module_slots.size():
+		return ""
+	match mtype:
+		ModuleType.TURRET:
+			var adj := count_adjacent_type(slot_index, ModuleType.TURRET)
+			if adj > 0:
+				return " · +%d%% cadence (synergie tourelle voisine)" % int(15 * adj)
+		ModuleType.MINE:
+			var adj := count_adjacent_type(slot_index, ModuleType.BOOSTER)
+			if adj > 0:
+				return " · +%d%% dégâts (synergie amplificateur voisin)" % int(25 * adj)
+		ModuleType.GENERATOR:
+			var adj := count_adjacent_type(slot_index, ModuleType.GENERATOR)
+			if adj > 0:
+				return " · +%d%% production (synergie générateur voisin)" % int(10 * adj)
+	return ""
+
+
 ## Cost of the next slot the skill tree would unlock, or -1.0 if already at
 ## MAX_SLOTS.
 func get_next_slot_unlock_cost() -> float:

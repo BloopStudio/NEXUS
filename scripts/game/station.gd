@@ -177,9 +177,9 @@ func _draw() -> void:
 		var label: String = ModuleInfo.NAMES[mtype]
 		if mtype != GameState.ModuleType.EMPTY:
 			label += " (niv. %d)" % level
-		label += _synergy_tooltip_note(_hovered_slot, mtype)
+		label += GameState.get_synergy_note(_hovered_slot)
 		if slot.get("disabled", false):
-			label += " Â· ð dÃ©sactivÃ© (Saboteur)"
+			label += " · 🔒 désactivé (Saboteur)"
 		var font := ThemeDB.fallback_font
 		var font_size := 14
 		var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
@@ -450,22 +450,3 @@ func _synergy_link_color(type_a: int, type_b: int) -> Variant:
 	if type_a == GameState.ModuleType.GENERATOR and type_b == GameState.ModuleType.GENERATOR:
 		return Color(1.0, 0.95, 0.3)
 	return null
-
-
-## Human-readable "+X% synergie" suffix for the hovered slot's tooltip, empty
-## if it isn't currently benefiting from one.
-func _synergy_tooltip_note(slot_index: int, mtype: int) -> String:
-	match mtype:
-		GameState.ModuleType.TURRET:
-			var adj := GameState.count_adjacent_type(slot_index, GameState.ModuleType.TURRET)
-			if adj > 0:
-				return " · +%d%% cadence (synergie)" % int(15 * adj)
-		GameState.ModuleType.MINE:
-			var adj := GameState.count_adjacent_type(slot_index, GameState.ModuleType.BOOSTER)
-			if adj > 0:
-				return " · +%d%% dégâts (synergie)" % int(25 * adj)
-		GameState.ModuleType.GENERATOR:
-			var adj := GameState.count_adjacent_type(slot_index, GameState.ModuleType.GENERATOR)
-			if adj > 0:
-				return " · +%d%% production (synergie)" % int(10 * adj)
-	return ""

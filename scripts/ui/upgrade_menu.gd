@@ -22,21 +22,57 @@ const BUILDABLE_TYPES := [
 ## their built slot during a WAVE (see station.gd), consumed on use.
 const CHARGE_TYPES := [GameState.ModuleType.EMERGENCY_SHIELD, GameState.ModuleType.EMP]
 
-# Per-level effect text, purely for display — keep these numbers in sync
-# with their actual source: GENERATOR (idle_generator.gd ENERGY_PER_SEC),
-# TURRET (station.gd _turret_damage/_turret_fire_rate), SHIELD (game_state.gd
+# Base per-level numbers — keep these in sync with their actual source:
+# GENERATOR (idle_generator.gd ENERGY_PER_SEC), TURRET (station.gd
+# _turret_damage/_turret_fire_rate), SHIELD (game_state.gd
 # SHIELD_MAX_HP_BONUS_PER_LEVEL), REPAIR (wave_manager.gd _apply_repair_regen),
-# BOOSTER (game_state.gd BOOSTER_DAMAGE_BONUS_PER_LEVEL).
+# BOOSTER (game_state.gd BOOSTER_DAMAGE_BONUS_PER_LEVEL), MINE (station.gd
+# _mine_damage). get_module_effect_text() below folds in the skill tree's
+# current bonuses (damage/idle/repair/max-HP tiers) so the displayed numbers
+# are what the module ACTUALLY does right now, not just its flat base value.
+const GENERATOR_PER_SEC := {1: 3.0, 2: 6.0, 3: 11.0}
+const TURRET_DAMAGE := {1: 15.0, 2: 28.0, 3: 50.0}
+const TURRET_COOLDOWN := {1: 2.5, 2: 1.8, 3: 1.2}
+const MINE_DAMAGE := {1: 20.0, 2: 35.0, 3: 55.0}
+
+# Static fallback text for modules whose effect isn't skill-scaled (charge
+# modules) or expressed as a percentage of a value that already bakes the
+# skill bonus in (station max HP), so the raw text stays accurate as-is.
 const MODULE_EFFECTS := {
-	GameState.ModuleType.GENERATOR: {1: "+3 énergie/s", 2: "+6 énergie/s", 3: "+11 énergie/s"},
-	GameState.ModuleType.TURRET:    {1: "15 dégâts, tir toutes les 2,5 s", 2: "28 dégâts, tir toutes les 1,8 s", 3: "50 dégâts, tir toutes les 1,2 s"},
-	GameState.ModuleType.SHIELD:    {1: "+60 vie max", 2: "+120 vie max", 3: "+180 vie max"},
-	GameState.ModuleType.REPAIR:    {1: "+35 vie après chaque vague", 2: "+50 vie après chaque vague", 3: "+65 vie après chaque vague"},
-	GameState.ModuleType.BOOSTER:   {1: "+15% dégâts des joueurs", 2: "+30% dégâts des joueurs", 3: "+45% dégâts des joueurs"},
-	GameState.ModuleType.MINE:      {1: "20 dégâts en zone toutes les 3 s", 2: "35 dégâts en zone toutes les 3 s", 3: "55 dégâts en zone toutes les 3 s"},
 	GameState.ModuleType.EMERGENCY_SHIELD: {1: "Soigne 30% de la vie max + invulnérabilité 3 s (usage unique)"},
 	GameState.ModuleType.EMP:              {1: "80 dégâts + étourdit tous les ennemis à l'écran (usage unique)"},
 }
+
+
+## Live effect text for `mtype` at `level`, including the team's current
+## skill tree bonuses (Dégâts/Économie/Défense) — e.g. a level-1 Tourelle
+## reads "18 dégâts..." instead of a flat "15 dégâts..." once Armement I is
+## unlocked, so the panel always shows what the module actually does right
+## now, not just its unmodified base value.
+func get_module_effect_text(mtype: int, level: int) -> String:
+	match mtype:
+		GameState.ModuleType.GENERATOR:
+			var per_sec: float = GENERATOR_PER_SEC[level] * GameState.get_skill_idle_multiplier()
+			return "+%.1f énergie/s" % per_sec
+		GameState.ModuleType.TURRET:
+			var dmg: float = TURRET_DAMAGE[level] * GameState.get_skill_damage_multiplier()
+			return "%d dégâts, tir toutes les %.1f s" % [int(dmg), TURRET_COOLDOWN[level]]
+		GameState.ModuleType.MINE:
+			var dmg: float = MINE_DAMAGE[level] * GameState.get_skill_damage_multiplier()
+			return "%d dégâts en zone toutes les 3 s" % int(dmg)
+		GameState.ModuleType.REPAIR:
+			var heal: float = (20.0 + float(level) * 15.0) * GameState.get_skill_repair_multiplier()
+			return "+%d vie après chaque vague" % int(heal)
+		GameState.ModuleType.SHIELD:
+			var hp: float = GameState.SHIELD_MAX_HP_BONUS_PER_LEVEL * level * GameState.get_skill_max_hp_multiplier()
+			return "+%d vie max" % int(hp)
+		GameState.ModuleType.BOOSTER:
+			# Effective total damage bump this module contributes once the
+			# team's flat skill-tree damage bonus is compounded on top of it.
+			var pct: float = ((1.0 + GameState.BOOSTER_DAMAGE_BONUS_PER_LEVEL * level) * GameState.get_skill_damage_multiplier() - 1.0) * 100.0
+			return "+%d%% dégâts des joueurs" % int(round(pct))
+		_:
+			return MODULE_EFFECTS.get(mtype, {}).get(level, "")
 
 var _hint_label: Label = null
 var _skill_tree_btn: Button = null
@@ -199,7 +235,7 @@ func _rebuild_panel_contents() -> void:
 			var b := Button.new()
 			b.custom_minimum_size = Vector2(96, 56)
 			b.add_theme_font_size_override("font_size", 12)
-			b.tooltip_text = "%s : %s" % [ModuleInfo.NAMES[t], MODULE_EFFECTS[t][1]]
+			b.tooltip_text = "%s : %s%s" % [ModuleInfo.NAMES[t], get_module_effect_text(t, 1), GameState.get_synergy_note_for_type(_selected_slot, t)]
 			b.pressed.connect(func(): _build(captured_t))
 			row.add_child(b)
 			_build_buttons.append(b)
@@ -214,10 +250,18 @@ func _rebuild_panel_contents() -> void:
 		var level: int = slot.get("level", 0)
 
 		var current_effect := Label.new()
-		current_effect.text = "Actuellement : %s" % MODULE_EFFECTS[mtype][level]
+		current_effect.text = "Actuellement : %s%s" % [get_module_effect_text(mtype, level), GameState.get_synergy_note(_selected_slot)]
 		current_effect.add_theme_font_size_override("font_size", 12)
 		current_effect.add_theme_color_override("font_color", C_DIM)
 		_panel_body.add_child(current_effect)
+
+		if slot.get("disabled", false):
+			var disabled_lbl := Label.new()
+			disabled_lbl.text = "🔒 Désactivé temporairement (touché par un Saboteur) — reprend son effet automatiquement."
+			disabled_lbl.add_theme_font_size_override("font_size", 12)
+			disabled_lbl.add_theme_color_override("font_color", Color(1.0, 0.4, 0.4))
+			disabled_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
+			_panel_body.add_child(disabled_lbl)
 
 		if mtype in CHARGE_TYPES:
 			var lbl := Label.new()
@@ -271,7 +315,7 @@ func _refresh_affordability() -> void:
 		var level: int = slot.get("level", 0)
 		var cost: float = GameState.get_module_upgrade_cost(_selected_slot)
 		var can: bool   = GameState.can_afford(cost)
-		_upgrade_label.text = "Niveau %d → %d : %s" % [level, level + 1, MODULE_EFFECTS[mtype][level + 1]]
+		_upgrade_label.text = "Niveau %d → %d : %s%s" % [level, level + 1, get_module_effect_text(mtype, level + 1), GameState.get_synergy_note(_selected_slot)]
 		_upgrade_button.text = "Améliorer — %d ⚡" % int(cost)
 		_upgrade_button.disabled = not can
 		_upgrade_button.modulate = C_WHITE if can else C_DISABLED
@@ -326,6 +370,11 @@ func _on_module_slots_changed(slot_index: int) -> void:
 
 func _on_skill_tree_changed() -> void:
 	_refresh_skill_tree_panel()
+	# The build/upgrade panel's displayed numbers (get_module_effect_text)
+	# fold in the current skill bonuses, so a newly-unlocked tier has to
+	# rebuild it too, not just the skill-tree overlay itself.
+	if _panel.visible and _selected_slot >= 0:
+		_rebuild_panel_contents()
 
 
 func _update_visibility() -> void:
