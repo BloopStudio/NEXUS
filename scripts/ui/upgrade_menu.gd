@@ -15,7 +15,12 @@ const BUILDABLE_TYPES := [
 	GameState.ModuleType.GENERATOR, GameState.ModuleType.TURRET,
 	GameState.ModuleType.SHIELD,    GameState.ModuleType.REPAIR,
 	GameState.ModuleType.BOOSTER,   GameState.ModuleType.MINE,
+	GameState.ModuleType.EMERGENCY_SHIELD, GameState.ModuleType.EMP,
 ]
+
+## Modules with no level/upgrade path — one-time use, triggered by clicking
+## their built slot during a WAVE (see station.gd), consumed on use.
+const CHARGE_TYPES := [GameState.ModuleType.EMERGENCY_SHIELD, GameState.ModuleType.EMP]
 
 # Per-level effect text, purely for display — keep these numbers in sync
 # with their actual source: GENERATOR (idle_generator.gd ENERGY_PER_SEC),
@@ -29,6 +34,8 @@ const MODULE_EFFECTS := {
 	GameState.ModuleType.REPAIR:    {1: "+35 vie après chaque vague", 2: "+50 vie après chaque vague", 3: "+65 vie après chaque vague"},
 	GameState.ModuleType.BOOSTER:   {1: "+15% dégâts des joueurs", 2: "+30% dégâts des joueurs", 3: "+45% dégâts des joueurs"},
 	GameState.ModuleType.MINE:      {1: "20 dégâts en zone toutes les 3 s", 2: "35 dégâts en zone toutes les 3 s", 3: "55 dégâts en zone toutes les 3 s"},
+	GameState.ModuleType.EMERGENCY_SHIELD: {1: "Soigne 30% de la vie max + invulnérabilité 3 s (usage unique)"},
+	GameState.ModuleType.EMP:              {1: "80 dégâts + étourdit tous les ennemis à l'écran (usage unique)"},
 }
 
 var _hint_label: Label = null
@@ -212,7 +219,14 @@ func _rebuild_panel_contents() -> void:
 		current_effect.add_theme_color_override("font_color", C_DIM)
 		_panel_body.add_child(current_effect)
 
-		if level >= 3:
+		if mtype in CHARGE_TYPES:
+			var lbl := Label.new()
+			lbl.text = "⚡ Usage unique — clique sur l'emplacement PENDANT une vague pour l'activer."
+			lbl.add_theme_font_size_override("font_size", 12)
+			lbl.add_theme_color_override("font_color", C_ACCENT)
+			lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
+			_panel_body.add_child(lbl)
+		elif level >= 3:
 			var lbl := Label.new()
 			lbl.text = "%s %s — Niveau MAX" % [ModuleInfo.ICONS[mtype], ModuleInfo.NAMES[mtype]]
 			lbl.add_theme_color_override("font_color", C_ACCENT)

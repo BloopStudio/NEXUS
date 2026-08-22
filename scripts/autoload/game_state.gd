@@ -15,9 +15,11 @@ signal skill_tree_changed()
 enum Phase { MENU, BUILD, WAVE, UPGRADE, GAME_OVER }
 
 # ─── Module types ──────────────────────────────────────────────────────────────
-# BOOSTER is appended last so existing type values (used over the network)
-# stay stable.
-enum ModuleType { EMPTY, GENERATOR, TURRET, SHIELD, REPAIR, BOOSTER, MINE }
+# New types are always appended last so existing type values (used over the
+# network) stay stable. EMERGENCY_SHIELD/EMP are single-charge: triggered by
+# clicking their built slot during a WAVE (not built passively like the
+# others), consumed on use — see station.gd's charge-module handling.
+enum ModuleType { EMPTY, GENERATOR, TURRET, SHIELD, REPAIR, BOOSTER, MINE, EMERGENCY_SHIELD, EMP }
 
 # ─── Costs (energy) ────────────────────────────────────────────────────────────
 const MODULE_COSTS := {
@@ -27,7 +29,13 @@ const MODULE_COSTS := {
 	ModuleType.REPAIR:    35,
 	ModuleType.BOOSTER:   45,
 	ModuleType.MINE:      55,
+	ModuleType.EMERGENCY_SHIELD: 70,
+	ModuleType.EMP:              90,
 }
+const EMERGENCY_SHIELD_HEAL_RATIO := 0.3
+const EMERGENCY_SHIELD_INVULN_SECONDS := 3.0
+const EMP_DAMAGE := 80.0
+const EMP_STUN_SECONDS := 2.5
 const BOOSTER_DAMAGE_BONUS_PER_LEVEL := 0.15  # +15% player bullet damage per level, per module
 const SHIELD_MAX_HP_BONUS_PER_LEVEL := 60.0   # +60 max station HP per level, per module
 const UPGRADE_COST_MULTIPLIER := 1.8  # cost *= multiplier per level
@@ -128,6 +136,8 @@ const SYNC_INTERVAL := 0.15
 func _process(delta: float) -> void:
 	if not NetworkManager.is_host():
 		return
+	if station_invuln_timer > 0.0:
+		station_invuln_timer -= delta
 	_sync_timer -= delta
 	if _sync_timer <= 0.0:
 		_sync_timer = SYNC_INTERVAL
@@ -216,6 +226,24 @@ func _init_slots() -> void:
 	module_slots.clear()
 	for i in STARTING_SLOTS:
 		module_slots.append({"type": ModuleType.EMPTY, "level": 0})
+
+
+# ─── Module placement synergies ─────────────────────────────────────────────
+# Slots sit in a ring (see station.gd's _slot_pos) — "adjacent" means the
+# immediate left/right neighbor in that ring, wrapping around. Rewards
+# actually thinking about where you build, not just how much you build.
+## Counts how many of `slot_index`'s two ring-neighbors are built as `type`
+## (0, 1, or 2).
+func count_adjacent_type(slot_index: int, type: ModuleType) -> int:
+	var n := module_slots.size()
+	if n == 0:
+		return 0
+	var count := 0
+	for offset in [-1, 1]:
+		var neighbor_index: int = ((slot_index + offset) % n + n) % n
+		if module_slots[neighbor_index]["type"] == type:
+			count += 1
+	return count
 
 
 ## Cost of the next slot the skill tree would unlock, or -1.0 if already at
@@ -451,12 +479,36 @@ func get_player_damage_multiplier() -> float:
 
 
 # ─── Station ───────────────────────────────────────────────────────────────────
+## Set by an Emergency Shield charge — the station ignores damage entirely
+## while this is > 0 (see damage_station below).
+var station_invuln_timer: float = 0.0
+
 func heal_station(amount: float) -> void:
 	station_hp += amount
 
 
 func damage_station(amount: float) -> void:
+	if station_invuln_timer > 0.0:
+		return
 	station_hp -= amount
+
+
+## Clears a built EMERGENCY_SHIELD/EMP slot back to EMPTY and returns which
+## type it was (EMPTY if the slot wasn't actually a charge module) — the
+## caller (station.gd, which has scene access to apply the actual effect on
+## enemies/station) checks the return value to know what to do next. This
+## intentionally does NOT refund any energy — it's a one-time use, not a
+## destroy.
+func consume_charge_module(slot_index: int) -> ModuleType:
+	if slot_index < 0 or slot_index >= module_slots.size():
+		return ModuleType.EMPTY
+	var slot: Dictionary = module_slots[slot_index]
+	var mtype: ModuleType = slot["type"]
+	if mtype != ModuleType.EMERGENCY_SHIELD and mtype != ModuleType.EMP:
+		return ModuleType.EMPTY
+	module_slots[slot_index] = {"type": ModuleType.EMPTY, "level": 0}
+	module_slots_changed.emit(slot_index)
+	return mtype
 
 
 # ─── Full reset ────────────────────────────────────────────────────────────────
@@ -467,6 +519,7 @@ func reset() -> void:
 	station_hp = 500.0
 	skill_tiers = {SkillBranch.DAMAGE: 0, SkillBranch.ECONOMY: 0, SkillBranch.DEFENSE: 0}
 	total_damage_dealt = 0.0
+	station_invuln_timer = 0.0
 	_match_start_msec = Time.get_ticks_msec()
 	_init_slots()
 	set_phase(Phase.BUILD)

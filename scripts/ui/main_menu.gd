@@ -22,6 +22,7 @@ var _join_panel: PanelContainer
 var _player_name_input: LineEdit
 var _spell_slot_e: OptionButton
 var _spell_slot_a: OptionButton
+var _class_dropdown: OptionButton
 var _update_btn: Button
 var _update_url: String = ""
 var _scores_panel: PanelContainer
@@ -109,6 +110,32 @@ func _build_ui() -> void:
 	_player_name_input.text = ProfileStore.player_name if not ProfileStore.player_name.is_empty() \
 		else "Joueur%d" % randi_range(1, 99)
 	name_row.add_child(_player_name_input)
+
+	_spacer(center, 8)
+
+	# ── Class: light stat modifier + suggested starting spell ──
+	var class_row := HBoxContainer.new()
+	class_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	center.add_child(class_row)
+	var class_lbl := Label.new()
+	class_lbl.text = "Classe : "
+	class_lbl.add_theme_color_override("font_color", C_TEXT)
+	class_row.add_child(class_lbl)
+
+	_class_dropdown = OptionButton.new()
+	_class_dropdown.custom_minimum_size = Vector2(220, 36)
+	var saved_class: int = ProfileStore.player_class
+	var default_class_idx := 0
+	for class_id in PlayerClasses.all_ids():
+		var cdef: Dictionary = PlayerClasses.DEFS[class_id]
+		_class_dropdown.add_item("%s %s" % [cdef["icon"], cdef["name"]])
+		_class_dropdown.set_item_metadata(_class_dropdown.item_count - 1, class_id)
+		_class_dropdown.set_item_tooltip(_class_dropdown.item_count - 1, cdef["desc"])
+		if class_id == saved_class:
+			default_class_idx = _class_dropdown.item_count - 1
+	_class_dropdown.selected = default_class_idx
+	_class_dropdown.item_selected.connect(_on_class_selected)
+	class_row.add_child(_class_dropdown)
 
 	_spacer(center, 8)
 
@@ -453,9 +480,23 @@ func _apply_player_name() -> void:
 		_spell_slot_e.get_item_metadata(_spell_slot_e.selected),
 		_spell_slot_a.get_item_metadata(_spell_slot_a.selected),
 	]
+	var player_class: int = _class_dropdown.get_item_metadata(_class_dropdown.selected)
 	NetworkManager.local_player_info["name"] = n
 	NetworkManager.local_player_info["spells"] = spells
-	ProfileStore.set_player_info(n, spells)
+	NetworkManager.local_player_info["class"] = player_class
+	ProfileStore.set_player_info(n, spells, player_class)
+
+
+## Suggests (doesn't force) the newly picked class's default spell on slot E
+## — the two spell dropdowns stay fully independent, the player can still
+## change it right after.
+func _on_class_selected(index: int) -> void:
+	var class_id: int = _class_dropdown.get_item_metadata(index)
+	var suggested: String = PlayerClasses.DEFS[class_id]["default_spell"]
+	for i in _spell_slot_e.item_count:
+		if _spell_slot_e.get_item_metadata(i) == suggested:
+			_spell_slot_e.selected = i
+			break
 
 
 ## Builds a "<label> [dropdown]" pair listing every spell — returns the

@@ -25,6 +25,8 @@ const MODULE_COLORS := {
 	4: Color(0.2,  1.0,  0.3),    # REPAIR     — green
 	5: Color(1.0,  0.15, 0.7),    # BOOSTER    — magenta
 	6: Color(0.9,  0.2,  0.15),   # MINE       — red
+	7: Color(1.0,  0.7,  0.1),    # EMERGENCY_SHIELD — amber
+	8: Color(0.4,  1.0,  0.4),    # EMP        — radioactive green
 }
 
 var _hovered_slot: int = -1
@@ -50,6 +52,10 @@ func _ready() -> void:
 	_resize_timers()
 	GameState.station_health_changed.connect(func(_v): queue_redraw())
 	GameState.module_slots_changed.connect(func(_i): queue_redraw())
+	# Built-in listener (separate from game.gd wiring slot_clicked to the
+	# build/upgrade panel) — that panel already ignores clicks outside
+	# BUILD/UPGRADE, this is the WAVE-phase counterpart for charge modules.
+	slot_clicked.connect(_on_slot_clicked_for_charge_trigger)
 
 	set_process(true)
 	set_process_input(true)
@@ -194,7 +200,10 @@ func _update_turrets(delta: float) -> void:
 
 		_turret_timers[i] -= delta
 		if _turret_timers[i] <= 0.0:
-			var fire_rate := _turret_fire_rate(slot["level"])
+			# Synergy: a Turret next to another Turret fires faster — rewards
+			# clustering them instead of spreading modules evenly.
+			var adjacent_turrets := GameState.count_adjacent_type(i, GameState.ModuleType.TURRET)
+			var fire_rate := _turret_fire_rate(slot["level"]) * (1.0 - 0.15 * adjacent_turrets)
 			_turret_timers[i] = fire_rate
 			_fire_turret(i)
 
@@ -262,7 +271,10 @@ func _pulse_mine(slot_index: int, level: int) -> void:
 	var game := get_parent()
 	if game == null or not game.has_method("get_enemies_in_radius"):
 		return
-	var dmg := _mine_damage(level) * GameState.get_skill_damage_multiplier()
+	# Synergy: a Mine next to an Amplificateur (Booster) hits harder — the
+	# module that's otherwise player-damage-only also helps a nearby Mine.
+	var adjacent_boosters := GameState.count_adjacent_type(slot_index, GameState.ModuleType.BOOSTER)
+	var dmg := _mine_damage(level) * GameState.get_skill_damage_multiplier() * (1.0 + 0.25 * adjacent_boosters)
 	for enemy in game.get_enemies_in_radius(global_position, MINE_RADIUS):
 		enemy.take_damage(dmg)
 		GameState.record_damage(dmg)
@@ -297,6 +309,62 @@ func _update_mine_pulses(delta: float) -> void:
 	for slot_index in expired:
 		_mine_pulses.erase(slot_index)
 	queue_redraw()
+
+
+# ─── Single-charge modules (Bouclier d'urgence, Bombe EMP) ─────────────────────
+# Unlike every other module, these don't do anything passively — clicking
+# their built slot DURING A WAVE triggers a one-time effect and consumes
+# them. Outside a wave, the same click instead opens the normal build/
+# upgrade panel (see upgrade_menu.gd's on_slot_clicked, which ignores clicks
+# outside BUILD/UPGRADE) — the two handlers just watch different phases of
+# the exact same signal.
+func _on_slot_clicked_for_charge_trigger(idx: int) -> void:
+	if GameState.phase != GameState.Phase.WAVE:
+		return
+	var slot: Dictionary = GameState.module_slots[idx]
+	if slot["type"] != GameState.ModuleType.EMERGENCY_SHIELD and slot["type"] != GameState.ModuleType.EMP:
+		return
+	if NetworkManager.is_host():
+		_trigger_charge_module(idx)
+	else:
+		_request_trigger_charge_rpc.rpc_id(1, idx)
+
+
+@rpc("any_peer", "reliable")
+func _request_trigger_charge_rpc(idx: int) -> void:
+	if not NetworkManager.is_host():
+		return
+	_trigger_charge_module(idx)
+
+
+func _trigger_charge_module(idx: int) -> void:
+	var mtype := GameState.consume_charge_module(idx)
+	if mtype == GameState.ModuleType.EMPTY:
+		return  # slot wasn't actually a charge module (race with another trigger) — no-op
+	_charge_effect_rpc.rpc(int(mtype))
+
+
+## Plays the effect on every peer; only the host applies the actual
+## gameplay change (damage/heal/stun), same authority pattern as
+## turrets/mines/spells.
+@rpc("authority", "call_local", "reliable")
+func _charge_effect_rpc(mtype: int) -> void:
+	match mtype:
+		GameState.ModuleType.EMERGENCY_SHIELD:
+			AudioManager.play_sfx(AudioManager.SFX.UPGRADE, 6.0)
+			if NetworkManager.is_host():
+				GameState.heal_station(GameState.station_max_hp * GameState.EMERGENCY_SHIELD_HEAL_RATIO)
+				GameState.station_invuln_timer = GameState.EMERGENCY_SHIELD_INVULN_SECONDS
+		GameState.ModuleType.EMP:
+			AudioManager.play_sfx(AudioManager.SFX.TURRET_SHOT, 8.0)
+			if NetworkManager.is_host():
+				var game := get_parent()
+				if game != null and game.has_method("get_enemies_in_radius"):
+					for enemy in game.get_enemies_in_radius(global_position, 99999.0):
+						enemy.take_damage(GameState.EMP_DAMAGE)
+						GameState.record_damage(GameState.EMP_DAMAGE)
+						if enemy.has_method("apply_slow"):
+							enemy.apply_slow(0.0, GameState.EMP_STUN_SECONDS)
 
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────

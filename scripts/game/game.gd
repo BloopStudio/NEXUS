@@ -166,6 +166,9 @@ func _add_player(peer_id: int) -> void:
 	var spells: Array = info.get("spells", [])
 	if spells.size() == 2:
 		player.equipped_spells = spells
+	# player_class must be set BEFORE add_child — Player._ready() (run by
+	# add_child, below) reads it to set max_hp/hp.
+	player.player_class = info.get("class", PlayerClasses.DEFAULT_CLASS)
 	# Spread players in a small arc at start
 	var angle := (float(_players.size()) / maxf(1.0, float(NetworkManager.players.size()))) * TAU
 	player.position = Vector2(cos(angle), sin(angle)) * 80.0
@@ -178,6 +181,12 @@ func get_local_player() -> Node2D:
 	if multiplayer.multiplayer_peer == null:
 		return null
 	return _players.get(multiplayer.get_unique_id(), null)
+
+
+## Used by a reviving player's _request_revive_rpc to find the downed
+## teammate's node (host-only lookup — see player.gd).
+func get_player_by_peer(id: int) -> Node2D:
+	return _players.get(id, null)
 
 
 # ─── Nearest enemy helper (used by Station turrets) ────────────────────────────

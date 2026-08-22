@@ -25,6 +25,7 @@ const SPELL_KEYS := ["E", "A"]
 var _spell_icon_labels: Array[Label] = []
 var _spell_cd_overlays: Array[ColorRect] = []
 var _spell_cd_labels: Array[Label] = []
+var _spell_levelup_buttons: Array[Button] = []
 
 
 func _ready() -> void:
@@ -126,10 +127,14 @@ func _build_ui() -> void:
 	add_child(spell_row)
 
 	for i in 2:
+		var slot_col := VBoxContainer.new()
+		slot_col.add_theme_constant_override("separation", 2)
+		spell_row.add_child(slot_col)
+
 		var slot := PanelContainer.new()
 		slot.add_theme_stylebox_override("panel", _panel_style())
 		slot.custom_minimum_size = Vector2(52, 52)
-		spell_row.add_child(slot)
+		slot_col.add_child(slot)
 
 		var slot_stack := Control.new()
 		slot_stack.custom_minimum_size = Vector2(48, 48)
@@ -174,6 +179,16 @@ func _build_ui() -> void:
 		key_lbl.offset_left = -14.0
 		key_lbl.offset_top = -2.0
 		slot_stack.add_child(key_lbl)
+
+		# Level-up button — only meaningfully clickable during BUILD/UPGRADE
+		# (spends shared team energy, same rhythm as building modules).
+		var captured_i: int = i
+		var levelup_btn := Button.new()
+		levelup_btn.custom_minimum_size = Vector2(0, 20)
+		levelup_btn.add_theme_font_size_override("font_size", 10)
+		levelup_btn.pressed.connect(func(): _on_spell_levelup_pressed(captured_i))
+		slot_col.add_child(levelup_btn)
+		_spell_levelup_buttons.append(levelup_btn)
 
 	# ── Top-right, below station HP: settings + leave the match ──────────────
 	var settings_btn := Button.new()
@@ -259,21 +274,47 @@ func _update_spell_slots() -> void:
 	if player == null or not player.has_method("get_spell_slot_info"):
 		return
 
+	var can_build := GameState.phase == GameState.Phase.BUILD or GameState.phase == GameState.Phase.UPGRADE
+
 	for i in 2:
 		var info: Array = player.get_spell_slot_info(i)
 		if info.is_empty():
 			_spell_icon_labels[i].text = ""
+			_spell_levelup_buttons[i].visible = false
 			continue
 		var spell_id: String = info[0]
 		var remaining: float = info[1]
 		var max_cd: float = info[2]
+		var level: int = info[3]
 		var def: Dictionary = Spells.DEFS[spell_id]
 		_spell_icon_labels[i].text = def["icon"]
-		_spell_icon_labels[i].tooltip_text = def["name"]
+		_spell_icon_labels[i].tooltip_text = "%s (niv. %d)" % [def["name"], level]
 
 		var ratio := clampf(remaining / max_cd, 0.0, 1.0) if max_cd > 0.0 else 0.0
 		_spell_cd_overlays[i].anchor_top = 1.0 - ratio
 		_spell_cd_labels[i].text = "%d" % ceili(remaining) if remaining > 0.05 else ""
+
+		var btn := _spell_levelup_buttons[i]
+		btn.visible = can_build
+		if can_build:
+			if level >= Spells.MAX_LEVEL:
+				btn.text = "Nv. MAX"
+				btn.disabled = true
+			else:
+				var cost: float = Spells.LEVEL_UP_COST[level]
+				btn.text = "▲ Nv.%d (%d⚡)" % [level + 1, int(cost)]
+				btn.disabled = not GameState.can_afford(cost)
+
+
+func _on_spell_levelup_pressed(slot: int) -> void:
+	var game := get_parent()
+	if game == null or not game.has_method("get_local_player"):
+		return
+	var player = game.get_local_player()
+	if player == null:
+		return
+	AudioManager.play_sfx(AudioManager.SFX.UI_CLICK)
+	player.request_level_up_spell(slot)
 
 
 # ─── Player list ──────────────────────────────────────────────────────────────

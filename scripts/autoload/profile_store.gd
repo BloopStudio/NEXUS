@@ -10,6 +10,7 @@ const MAX_SCORES := 10
 
 var player_name: String = ""
 var spell_loadout: Array = []
+var player_class: int = 0  # PlayerClasses.PlayerClass
 ## Array of {"name": String, "wave": int, "date": String}, sorted best-first.
 var scores: Array = []
 
@@ -30,6 +31,7 @@ func _load() -> void:
 		return
 	player_name = parsed.get("player_name", "")
 	spell_loadout = parsed.get("spell_loadout", [])
+	player_class = parsed.get("player_class", 0)
 	scores = parsed.get("scores", [])
 
 
@@ -41,19 +43,21 @@ func _save() -> void:
 	f.store_string(JSON.stringify({
 		"player_name": player_name,
 		"spell_loadout": spell_loadout,
+		"player_class": player_class,
 		"scores": scores,
 	}))
 	f.close()
 
 
-## Called from the main menu whenever the player confirms their name/loadout
-## (host/join/solo) — keeps the save file current without needing a separate
-## "save profile" action.
-func set_player_info(name: String, spells: Array) -> void:
-	if name == player_name and spells == spell_loadout:
+## Called from the main menu whenever the player confirms their name/loadout/
+## class (host/join/solo) — keeps the save file current without needing a
+## separate "save profile" action.
+func set_player_info(name: String, spells: Array, player_class_id: int) -> void:
+	if name == player_name and spells == spell_loadout and player_class_id == player_class:
 		return
 	player_name = name
 	spell_loadout = spells
+	player_class = player_class_id
 	_save()
 
 

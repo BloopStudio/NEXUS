@@ -17,10 +17,14 @@ func _process(delta: float) -> void:
 		return
 
 	var total := 0.0
-	for slot in GameState.module_slots:
+	for i in GameState.module_slots.size():
+		var slot: Dictionary = GameState.module_slots[i]
 		if slot["type"] == GameState.ModuleType.GENERATOR:
 			var level: int = slot.get("level", 0)
-			total += ENERGY_PER_SEC.get(level, 0.0)
+			# Synergy: a Générateur next to another Générateur produces more —
+			# clustering them beats spreading them around the ring.
+			var adjacent_generators := GameState.count_adjacent_type(i, GameState.ModuleType.GENERATOR)
+			total += ENERGY_PER_SEC.get(level, 0.0) * (1.0 + 0.1 * adjacent_generators)
 
 	if total > 0.0:
 		GameState.add_energy(total * GameState.get_skill_idle_multiplier() * delta)

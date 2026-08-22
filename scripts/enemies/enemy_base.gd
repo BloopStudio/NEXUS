@@ -65,6 +65,13 @@ func _process(delta: float) -> void:
 		# Contact damage when close enough
 		if global_position.distance_to(_target) < shape_radius + 42.0:
 			_on_reach_station()
+
+		# Incidental contact damage to any player standing in the way —
+		# enemies still path toward the station, not players, this is just
+		# what happens if you don't dodge one on its way through.
+		for p in get_tree().get_nodes_in_group("players"):
+			if p.has_method("take_contact_damage") and global_position.distance_to(p.global_position) < shape_radius + 14.0:
+				p.take_contact_damage(contact_damage * 0.5)
 	else:
 		global_position = global_position.lerp(_net_target_pos, clampf(delta * NET_INTERP_SPEED, 0.0, 1.0))
 		queue_redraw()

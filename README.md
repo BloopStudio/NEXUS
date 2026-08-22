@@ -49,9 +49,20 @@ Les paliers d'une branche se débloquent dans l'ordre.
 | ❤ Réparation | Régénère la vie de la station après chaque vague |
 | 💪 Amplificateur | Augmente les dégâts des tirs des joueurs |
 | 💣 Mine | Dégâts de zone périodiques à tous les ennemis proches |
+| 🚨 Bouclier d'urgence | Usage unique — clic pendant une vague : soigne 30% de la vie max + invulnérabilité 3 s |
+| ☢ Bombe EMP | Usage unique — clic pendant une vague : dégâts + étourdit tous les ennemis à l'écran |
 
 Chaque module a 3 niveaux d'amélioration, et peut être détruit pour
-récupérer 30% de l'énergie investie (construction + améliorations).
+récupérer 30% de l'énergie investie (construction + améliorations) — sauf
+le Bouclier d'urgence et la Bombe EMP, à usage unique et sans niveau : on
+clique sur leur emplacement pendant une vague pour les déclencher, ce qui
+les consomme.
+
+**Synergies de placement** : les emplacements sont disposés en anneau, et
+les modules voisins immédiats s'influencent :
+- 🔫 Tourelle à côté d'une autre Tourelle : cadence de tir améliorée
+- 💣 Mine à côté d'un 💪 Amplificateur : dégâts de la mine augmentés
+- ⚡ Générateur à côté d'un autre Générateur : production augmentée
 
 ### Sorts du joueur
 Avant de démarrer une partie, chaque joueur choisit dans le menu principal
@@ -66,7 +77,29 @@ réassignables dans les réglages — un sort n'est jamais figé sur une touche)
 | 🚀 Ruée | Vitesse de déplacement fortement augmentée | 5 s |
 
 Le HUD affiche les deux sorts équipés avec leur icône et le temps de
-recharge restant.
+recharge restant. Chaque sort équipé peut aussi être amélioré jusqu'au
+niveau 3 avec l'énergie de l'équipe pendant la phase de construction
+(bouton sous son icône) : la recharge diminue et l'effet augmente.
+
+### Classes
+Avant une partie, chaque joueur choisit une classe qui modifie légèrement
+ses statistiques de base et suggère un sort de départ (sans jamais le
+forcer) :
+
+| Classe | Effet |
+|---|---|
+| ⚔ Dégâts | +25% dégâts de tir et de sorts, vie réduite |
+| ✚ Soin | Vie et dégâts normaux |
+| 🛡 Tank | +60% vie, dégâts réduits |
+
+### Vie du joueur
+Les joueurs ont désormais des points de vie : le contact avec un ennemi sur
+son chemin vers la station en retire (l'ennemi continue de cibler la
+station, pas les joueurs — c'est juste ce qui arrive si on reste sur son
+passage). À 0 PV, le joueur tombe « à terre » : il ne peut plus bouger,
+tirer ni lancer de sort. Un coéquipier qui reste ~2,5 s à proximité le
+ranime à 50% de vie ; sans aide, il se relève quand même tout seul après
+20 s à 25% de vie — jamais bloqué définitivement, seul ou abandonné.
 
 ### Vagues
 Des vagues d'ennemis arrivent à intervalles réguliers, de plus en plus
