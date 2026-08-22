@@ -23,6 +23,7 @@ var _player_name_input: LineEdit
 var _spell_slot_e: OptionButton
 var _spell_slot_a: OptionButton
 var _class_dropdown: OptionButton
+var _mutator_dropdown: OptionButton
 var _update_btn: Button
 var _update_url: String = ""
 var _scores_panel: PanelContainer
@@ -136,6 +137,29 @@ func _build_ui() -> void:
 	_class_dropdown.selected = default_class_idx
 	_class_dropdown.item_selected.connect(_on_class_selected)
 	class_row.add_child(_class_dropdown)
+
+	_spacer(center, 8)
+
+	# ── Mutator: host-picked, whole-run station modifier (like a roguelite
+	# seed) — only matters when hosting; a joiner's own pick is ignored, the
+	# host's choice is what gets broadcast to everyone at match start.
+	var mutator_row := HBoxContainer.new()
+	mutator_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	center.add_child(mutator_row)
+	var mutator_lbl := Label.new()
+	mutator_lbl.text = "Modificateur (hôte) : "
+	mutator_lbl.add_theme_color_override("font_color", C_TEXT)
+	mutator_row.add_child(mutator_lbl)
+
+	_mutator_dropdown = OptionButton.new()
+	_mutator_dropdown.custom_minimum_size = Vector2(220, 36)
+	for mutator_id in Mutators.all_ids():
+		var mdef: Dictionary = Mutators.DEFS[mutator_id]
+		_mutator_dropdown.add_item("%s %s" % [mdef["icon"], mdef["name"]])
+		_mutator_dropdown.set_item_metadata(_mutator_dropdown.item_count - 1, mutator_id)
+		_mutator_dropdown.set_item_tooltip(_mutator_dropdown.item_count - 1, mdef["desc"])
+	_mutator_dropdown.selected = 0
+	mutator_row.add_child(_mutator_dropdown)
 
 	_spacer(center, 8)
 
@@ -329,7 +353,7 @@ func _on_join_pressed() -> void:
 func _on_solo_pressed() -> void:
 	_apply_player_name()
 	NetworkManager.host_game()
-	GameState.reset()
+	GameState.reset(_get_selected_mutator())
 	SceneLoader.change_scene("res://scenes/game.tscn")
 
 
@@ -389,7 +413,7 @@ func _on_start_pressed() -> void:
 	if NetworkManager.get_player_count() < 1:
 		_set_status("En attente d'au moins un joueur…", C_ERROR)
 		return
-	NetworkManager.start_game()
+	NetworkManager.start_game(_get_selected_mutator())
 
 
 func _on_connect_pressed() -> void:
@@ -424,8 +448,8 @@ func _on_connection_failed() -> void:
 		"cas, seul le réseau local de l'hôte peut se connecter).", C_ERROR)
 
 
-func _on_game_starting() -> void:
-	GameState.reset()
+func _on_game_starting(mutator: int) -> void:
+	GameState.reset(mutator)
 	SceneLoader.change_scene("res://scenes/game.tscn")
 
 
@@ -490,6 +514,10 @@ func _apply_player_name() -> void:
 ## Suggests (doesn't force) the newly picked class's default spell on slot E
 ## — the two spell dropdowns stay fully independent, the player can still
 ## change it right after.
+func _get_selected_mutator() -> int:
+	return _mutator_dropdown.get_item_metadata(_mutator_dropdown.selected)
+
+
 func _on_class_selected(index: int) -> void:
 	var class_id: int = _class_dropdown.get_item_metadata(index)
 	var suggested: String = PlayerClasses.DEFS[class_id]["default_spell"]

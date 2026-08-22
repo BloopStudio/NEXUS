@@ -131,7 +131,21 @@ Entre chaque vague : phase de construction pour améliorer la station.
 | Tank | Hexagone violet | Lent, très résistant |
 | Ranged (dès la vague 3) | Diamant magenta | Garde ses distances et tire sur la station |
 | Saboteur (dès la vague 4) | Diamant violet à pointes | Ignore la station, fonce sur un module construit au hasard et le désactive temporairement à son contact |
+| Bouclier (dès la vague 3) | Cercle bleu avec arc frontal | Bloque les dégâts venant de face (arc ~140°) — il faut le flanquer pour le toucher |
 | Splitter (dès la vague 5) | Pentagone jaune | Se scinde en 2 Fast à sa mort |
+| Kamikaze (dès la vague 6) | Cercle orange hérissé | Fonce vite, explose au contact (dégâts de zone à la station et aux joueurs proches) — à abattre à distance |
+
+### Modificateurs de partie
+Avant d'héberger, un menu déroulant "Modificateur" laisse choisir un
+mutateur qui s'applique à toute la partie (façon graine de roguelite) :
+
+| Modificateur | Effet |
+|---|---|
+| ➖ Aucun | Partie standard |
+| 💎 Canon de verre | +20% dégâts, -20% vie de la station |
+| 🏰 Forteresse | +30% vie de la station, -15% dégâts |
+| ⚡ Ruée | +25% énergie passive, mais ennemis +10% de vie |
+| 💰 Économe | -15% coût de construction/amélioration, -10% dégâts |
 
 ### Profil local, classement et statistiques
 Le pseudo et les sorts choisis dans le menu principal sont mémorisés

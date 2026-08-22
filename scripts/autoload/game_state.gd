@@ -70,6 +70,26 @@ const SKILL_BRANCH_NAMES := {
 # ─── State ─────────────────────────────────────────────────────────────────────
 var phase: Phase = Phase.MENU
 
+## Host-chosen station-wide modifier for the current match (see mutators.gd) —
+## set once by reset() and left alone for the whole run, same "seed" spirit
+## as a roguelite run modifier.
+var active_mutator: int = Mutators.Mutator.NONE
+
+func get_mutator_damage_multiplier() -> float:
+	return Mutators.DEFS[active_mutator].get("damage_mult", 1.0)
+
+func get_mutator_station_hp_multiplier() -> float:
+	return Mutators.DEFS[active_mutator].get("station_hp_mult", 1.0)
+
+func get_mutator_energy_multiplier() -> float:
+	return Mutators.DEFS[active_mutator].get("energy_mult", 1.0)
+
+func get_mutator_cost_multiplier() -> float:
+	return Mutators.DEFS[active_mutator].get("cost_mult", 1.0)
+
+func get_mutator_wave_hp_multiplier() -> float:
+	return Mutators.DEFS[active_mutator].get("wave_hp_mult", 1.0)
+
 var energy: float = 50.0:
 	set(v):
 		energy = maxf(0.0, v)
@@ -459,7 +479,7 @@ func add_energy(amount: float) -> void:
 
 # ─── Module helpers ────────────────────────────────────────────────────────────
 func get_module_build_cost(type: ModuleType) -> float:
-	return MODULE_COSTS.get(type, 999.0) * get_skill_cost_multiplier()
+	return MODULE_COSTS.get(type, 999.0) * get_skill_cost_multiplier() * get_mutator_cost_multiplier()
 
 
 func get_module_upgrade_cost(slot_index: int) -> float:
@@ -467,7 +487,7 @@ func get_module_upgrade_cost(slot_index: int) -> float:
 	if slot["type"] == ModuleType.EMPTY:
 		return 0.0
 	var base: float = MODULE_COSTS.get(slot["type"], 0.0)
-	return base * pow(UPGRADE_COST_MULTIPLIER, slot["level"]) * get_skill_cost_multiplier()
+	return base * pow(UPGRADE_COST_MULTIPLIER, slot["level"]) * get_skill_cost_multiplier() * get_mutator_cost_multiplier()
 
 
 func build_module(slot_index: int, type: ModuleType) -> bool:
@@ -542,7 +562,7 @@ func _recompute_station_max_hp() -> void:
 	for slot in module_slots:
 		if slot["type"] == ModuleType.SHIELD and not slot.get("disabled", false):
 			bonus += SHIELD_MAX_HP_BONUS_PER_LEVEL * slot["level"]
-	var new_max := (500.0 + bonus) * get_skill_max_hp_multiplier()
+	var new_max := (500.0 + bonus) * get_skill_max_hp_multiplier() * get_mutator_station_hp_multiplier()
 	if new_max != station_max_hp:
 		station_max_hp = new_max
 		station_hp = station_hp  # re-run the setter so it re-clamps against the new max
@@ -555,7 +575,7 @@ func get_player_damage_multiplier() -> float:
 	for slot in module_slots:
 		if slot["type"] == ModuleType.BOOSTER and not slot.get("disabled", false):
 			mult += BOOSTER_DAMAGE_BONUS_PER_LEVEL * slot["level"]
-	return mult * get_skill_damage_multiplier()
+	return mult * get_skill_damage_multiplier() * get_mutator_damage_multiplier()
 
 
 # ─── Station ───────────────────────────────────────────────────────────────────
@@ -593,11 +613,12 @@ func consume_charge_module(slot_index: int) -> ModuleType:
 
 
 # ─── Full reset ────────────────────────────────────────────────────────────────
-func reset() -> void:
+func reset(mutator: int = Mutators.Mutator.NONE) -> void:
+	active_mutator = mutator
 	energy = 50.0
 	wave_number = 0
-	station_max_hp = 500.0
-	station_hp = 500.0
+	station_max_hp = 500.0 * get_mutator_station_hp_multiplier()
+	station_hp = station_max_hp
 	skill_tiers = {SkillBranch.DAMAGE: 0, SkillBranch.ECONOMY: 0, SkillBranch.DEFENSE: 0}
 	total_damage_dealt = 0.0
 	station_invuln_timer = 0.0

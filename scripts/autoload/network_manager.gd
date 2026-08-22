@@ -61,7 +61,7 @@ signal joining_candidate(index: int, total: int, ip: String)
 ## Emitted on every peer (host included) when the host starts the match —
 ## this is what actually moves everyone from the main menu into the game
 ## scene together, instead of only the host who clicked "Démarrer".
-signal game_starting()
+signal game_starting(mutator: int)
 ## Emitted whenever the local copy of `players` changes for a reason other
 ## than a peer joining/leaving (e.g. a fresh ping reading) — connect this if
 ## you display more than just the join/leave events (see HUD player list).
@@ -490,15 +490,17 @@ func _pong_rpc(sent_at_msec: int) -> void:
 ## Host only: tell every connected peer (host included, via call_local) to
 ## start the match together. Call this instead of changing the scene
 ## directly — otherwise clients are left stuck on "En attente du démarrage".
-func start_game() -> void:
+## `mutator` (see mutators.gd) is the host's pick for the whole run — every
+## peer needs the same value since it changes shared station math.
+func start_game(mutator: int = 0) -> void:
 	if not is_host():
 		return
-	_start_game_rpc.rpc()
+	_start_game_rpc.rpc(mutator)
 
 
 @rpc("authority", "call_local", "reliable")
-func _start_game_rpc() -> void:
-	game_starting.emit()
+func _start_game_rpc(mutator: int) -> void:
+	game_starting.emit(mutator)
 
 
 # ─── Signal handlers ───────────────────────────────────────────────────────────

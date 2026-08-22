@@ -240,8 +240,9 @@ func _fire_turret(slot_index: int) -> void:
 	if enemy == null:
 		return
 
-	var dmg := _turret_damage(GameState.module_slots[slot_index]["level"]) * GameState.get_skill_damage_multiplier()
-	enemy.take_damage(dmg)
+	var dmg := _turret_damage(GameState.module_slots[slot_index]["level"]) * GameState.get_skill_damage_multiplier() * GameState.get_mutator_damage_multiplier()
+	var impact_dir := (enemy.global_position - _slot_pos(slot_index)).normalized()
+	enemy.take_damage(dmg, impact_dir)
 	GameState.record_damage(dmg)
 
 	_turret_flash_rpc.rpc(slot_index, to_local(enemy.global_position))
@@ -289,7 +290,7 @@ func _pulse_mine(slot_index: int, level: int) -> void:
 	# Synergy: a Mine next to an Amplificateur (Booster) hits harder — the
 	# module that's otherwise player-damage-only also helps a nearby Mine.
 	var adjacent_boosters := GameState.count_adjacent_type(slot_index, GameState.ModuleType.BOOSTER)
-	var dmg := _mine_damage(level) * GameState.get_skill_damage_multiplier() * (1.0 + 0.25 * adjacent_boosters)
+	var dmg := _mine_damage(level) * GameState.get_skill_damage_multiplier() * GameState.get_mutator_damage_multiplier() * (1.0 + 0.25 * adjacent_boosters)
 	for enemy in game.get_enemies_in_radius(global_position, MINE_RADIUS):
 		enemy.take_damage(dmg)
 		GameState.record_damage(dmg)

@@ -11,6 +11,8 @@ const ENEMY_TANK     := preload("res://scripts/enemies/enemy_tank.gd")
 const ENEMY_RANGED   := preload("res://scripts/enemies/enemy_ranged.gd")
 const ENEMY_SPLITTER := preload("res://scripts/enemies/enemy_splitter.gd")
 const ENEMY_SABOTEUR := preload("res://scripts/enemies/enemy_saboteur.gd")
+const ENEMY_SHIELD   := preload("res://scripts/enemies/enemy_shield.gd")
+const ENEMY_KAMIKAZE := preload("res://scripts/enemies/enemy_kamikaze.gd")
 
 var _spawn_queue: Array[String] = []
 var _spawn_timer: float = 0.0
@@ -132,6 +134,20 @@ func _build_wave_queue(wave: int) -> Array[String]:
 		for _i in saboteurs:
 			q.append("saboteur")
 
+	# Shielded enemies from wave 3 — block frontal damage, forcing players to
+	# spread out and flank rather than massing fire on one spot.
+	if wave >= 3:
+		var shielded := 1 + (wave - 3) / 2
+		for _i in shielded:
+			q.append("shield")
+
+	# Kamikazes from wave 6 — must be shot down at range before they reach
+	# melee, or their detonation punishes standing still near the station.
+	if wave >= 6:
+		var kamikazes := 1 + (wave - 6) / 3
+		for _i in kamikazes:
+			q.append("kamikaze")
+
 	# Shuffle to mix types
 	q.shuffle()
 	return q
@@ -195,6 +211,8 @@ func _spawn_enemy_rpc(id: int, type: String, spawn_pos: Vector2, target_pos: Vec
 		"ranged":   enemy = ENEMY_RANGED.new()
 		"splitter": enemy = ENEMY_SPLITTER.new()
 		"saboteur": enemy = ENEMY_SABOTEUR.new()
+		"shield":   enemy = ENEMY_SHIELD.new()
+		"kamikaze": enemy = ENEMY_KAMIKAZE.new()
 		_:          enemy = ENEMY_BASIC.new()
 
 	enemy.enemy_id = id
@@ -215,7 +233,7 @@ func _spawn_enemy_rpc(id: int, type: String, spawn_pos: Vector2, target_pos: Vec
 	# each individual enemy stayed exactly as strong on wave 20 as on wave 1,
 	# so once a station out-built the spawn rate the game stopped escalating.
 	# Scale HP/damage per wave (speed too, capped, so it stays dodgeable).
-	var difficulty := _difficulty_multiplier(GameState.wave_number)
+	var difficulty := _difficulty_multiplier(GameState.wave_number) * GameState.get_mutator_wave_hp_multiplier()
 	enemy.max_hp *= difficulty
 	enemy.hp = enemy.max_hp
 	enemy.contact_damage *= difficulty

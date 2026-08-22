@@ -84,12 +84,18 @@ func _process(delta: float) -> void:
 		queue_redraw()
 
 
+## Actual forward movement direction (unlike _facing_angle, which has an
+## extra +90° baked in for the shape-drawing transform) — used by subclasses
+## like enemy_shield.gd to tell a frontal hit from a flanking one.
+var _move_dir: Vector2 = Vector2.RIGHT
+
 ## Rotates the shape to point toward the station — computed the same way on
 ## every peer (host movement and client interpolation both converge on
 ## `_target`), so it stays in sync without any extra network traffic.
 func _face_target() -> void:
 	var dir := _target - global_position
 	if dir.length() > 1.0:
+		_move_dir = dir.normalized()
 		_facing_angle = dir.angle() + PI / 2.0
 
 
@@ -138,8 +144,17 @@ func apply_slow(factor: float, duration: float) -> void:
 	_slow_timer = duration
 
 
-func take_damage(amount: float) -> void:
+## `from_direction` is the direction the damage traveled when it hit (e.g. a
+## bullet's velocity direction) — Vector2.ZERO means "no particular
+## direction" (area-of-effect sources: mines, EMP, the player's Onde de
+## choc), which always gets through since there's no single angle to block.
+## Used by enemy_shield.gd to block frontal hits while letting flanking ones
+## through; every other enemy type ignores it (see _blocks_damage()).
+func take_damage(amount: float, from_direction: Vector2 = Vector2.ZERO) -> void:
 	if _dead:
+		return
+	if _blocks_damage(from_direction):
+		_on_damage_blocked()
 		return
 	hp -= amount
 	_hit_flash = 0.12
@@ -147,6 +162,17 @@ func take_damage(amount: float) -> void:
 	AudioManager.play_sfx(AudioManager.SFX.ENEMY_HIT, -8.0)
 	if hp <= 0.0:
 		_die()
+
+
+## Override to reject damage arriving from a particular direction (see
+## enemy_shield.gd). Base enemies block nothing.
+func _blocks_damage(_from_direction: Vector2) -> bool:
+	return false
+
+
+## Override for a distinct "blocked" visual/sound instead of taking the hit.
+func _on_damage_blocked() -> void:
+	pass
 
 
 func _on_reach_station() -> void:

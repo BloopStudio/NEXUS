@@ -27,4 +27,4 @@ func _process(delta: float) -> void:
 			total += ENERGY_PER_SEC.get(level, 0.0) * (1.0 + 0.1 * adjacent_generators)
 
 	if total > 0.0:
-		GameState.add_energy(total * GameState.get_skill_idle_multiplier() * delta)
+		GameState.add_energy(total * GameState.get_skill_idle_multiplier() * GameState.get_mutator_energy_multiplier() * delta)

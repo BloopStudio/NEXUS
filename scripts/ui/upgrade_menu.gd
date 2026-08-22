@@ -55,10 +55,10 @@ func get_module_effect_text(mtype: int, level: int) -> String:
 			var per_sec: float = GENERATOR_PER_SEC[level] * GameState.get_skill_idle_multiplier()
 			return "+%.1f énergie/s" % per_sec
 		GameState.ModuleType.TURRET:
-			var dmg: float = TURRET_DAMAGE[level] * GameState.get_skill_damage_multiplier()
+			var dmg: float = TURRET_DAMAGE[level] * GameState.get_skill_damage_multiplier() * GameState.get_mutator_damage_multiplier()
 			return "%d dégâts, tir toutes les %.1f s" % [int(dmg), TURRET_COOLDOWN[level]]
 		GameState.ModuleType.MINE:
-			var dmg: float = MINE_DAMAGE[level] * GameState.get_skill_damage_multiplier()
+			var dmg: float = MINE_DAMAGE[level] * GameState.get_skill_damage_multiplier() * GameState.get_mutator_damage_multiplier()
 			return "%d dégâts en zone toutes les 3 s" % int(dmg)
 		GameState.ModuleType.REPAIR:
 			var heal: float = (20.0 + float(level) * 15.0) * GameState.get_skill_repair_multiplier()
@@ -69,7 +69,7 @@ func get_module_effect_text(mtype: int, level: int) -> String:
 		GameState.ModuleType.BOOSTER:
 			# Effective total damage bump this module contributes once the
 			# team's flat skill-tree damage bonus is compounded on top of it.
-			var pct: float = ((1.0 + GameState.BOOSTER_DAMAGE_BONUS_PER_LEVEL * level) * GameState.get_skill_damage_multiplier() - 1.0) * 100.0
+			var pct: float = ((1.0 + GameState.BOOSTER_DAMAGE_BONUS_PER_LEVEL * level) * GameState.get_skill_damage_multiplier() * GameState.get_mutator_damage_multiplier() - 1.0) * 100.0
 			return "+%d%% dégâts des joueurs" % int(round(pct))
 		_:
 			return MODULE_EFFECTS.get(mtype, {}).get(level, "")

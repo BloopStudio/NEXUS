@@ -416,7 +416,7 @@ class _Bullet extends Node2D:
 		if NetworkManager.is_host():
 			for enemy in get_tree().get_nodes_in_group("enemies"):
 				if not enemy.is_queued_for_deletion() and global_position.distance_to(enemy.global_position) < 16.0:
-					enemy.take_damage(damage)
+					enemy.take_damage(damage, direction)
 					GameState.record_damage(damage)
 					queue_free()
 					return
