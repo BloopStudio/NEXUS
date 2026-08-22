@@ -96,6 +96,13 @@ const STARTING_SLOTS := 8
 const MAX_SLOTS := 12
 const SLOT_UNLOCK_COSTS := [150.0, 220.0, 300.0, 400.0]  # cost of the 9th..12th slot
 
+# Host-only countdown, one entry per module_slots index, kept OUT of the
+# synced slot dicts on purpose — it changes every frame and syncing it would
+# spam module_slots_changed (the exact "menu rebuilt every tick" bug class
+# fixed earlier). Only the boolean "disabled" flag on the slot dict itself
+# is synced, and that only flips twice per disable (on/off).
+var _module_disable_timers: Array[float] = []
+
 # branch (int) -> tiers unlocked so far (0..3)
 var skill_tiers: Dictionary = {
 	SkillBranch.DAMAGE: 0, SkillBranch.ECONOMY: 0, SkillBranch.DEFENSE: 0,
@@ -138,6 +145,7 @@ func _process(delta: float) -> void:
 		return
 	if station_invuln_timer > 0.0:
 		station_invuln_timer -= delta
+	_tick_module_disable_timers(delta)
 	_sync_timer -= delta
 	if _sync_timer <= 0.0:
 		_sync_timer = SYNC_INTERVAL
@@ -186,7 +194,8 @@ func _slots_equal(a: Array, b: Array) -> bool:
 	for i in a.size():
 		var sa: Dictionary = a[i]
 		var sb: Dictionary = b[i]
-		if sa.get("type") != sb.get("type") or sa.get("level") != sb.get("level"):
+		if sa.get("type") != sb.get("type") or sa.get("level") != sb.get("level") \
+				or sa.get("disabled", false) != sb.get("disabled", false):
 			return false
 	return true
 
@@ -224,8 +233,10 @@ func _request_upgrade_rpc(slot_index: int) -> void:
 
 func _init_slots() -> void:
 	module_slots.clear()
+	_module_disable_timers.clear()
 	for i in STARTING_SLOTS:
 		module_slots.append({"type": ModuleType.EMPTY, "level": 0})
+		_module_disable_timers.append(0.0)
 
 
 # ─── Module placement synergies ─────────────────────────────────────────────
@@ -246,6 +257,37 @@ func count_adjacent_type(slot_index: int, type: ModuleType) -> int:
 	return count
 
 
+## Disables a built module for `duration` seconds — its passive/active
+## effect stops applying (checked at each call site: idle generation, turret
+## fire, mine pulse, booster/shield/repair bonuses, charge-module trigger)
+## without touching its type/level, so it resumes exactly as it was once the
+## timer runs out. Used by the Saboteur enemy (see enemy_saboteur.gd).
+func disable_module(slot_index: int, duration: float) -> void:
+	if slot_index < 0 or slot_index >= module_slots.size():
+		return
+	if module_slots[slot_index]["type"] == ModuleType.EMPTY:
+		return
+	module_slots[slot_index]["disabled"] = true
+	_module_disable_timers[slot_index] = duration
+	module_slots_changed.emit(slot_index)
+
+
+func is_module_disabled(slot_index: int) -> bool:
+	if slot_index < 0 or slot_index >= module_slots.size():
+		return false
+	return module_slots[slot_index].get("disabled", false)
+
+
+func _tick_module_disable_timers(delta: float) -> void:
+	for i in _module_disable_timers.size():
+		if _module_disable_timers[i] <= 0.0:
+			continue
+		_module_disable_timers[i] -= delta
+		if _module_disable_timers[i] <= 0.0 and module_slots[i].get("disabled", false):
+			module_slots[i]["disabled"] = false
+			module_slots_changed.emit(i)
+
+
 ## Cost of the next slot the skill tree would unlock, or -1.0 if already at
 ## MAX_SLOTS.
 func get_next_slot_unlock_cost() -> float:
@@ -263,6 +305,7 @@ func unlock_slot() -> bool:
 	if cost < 0.0 or not spend_energy(cost):
 		return false
 	module_slots.append({"type": ModuleType.EMPTY, "level": 0})
+	_module_disable_timers.append(0.0)
 	module_slots_changed.emit(-1)
 	return true
 
@@ -397,6 +440,7 @@ func build_module(slot_index: int, type: ModuleType) -> bool:
 	if not spend_energy(cost):
 		return false
 	module_slots[slot_index] = {"type": type, "level": 1}
+	_module_disable_timers[slot_index] = 0.0
 	_recompute_station_max_hp()
 	module_slots_changed.emit(slot_index)
 	return true
@@ -435,6 +479,7 @@ func destroy_module(slot_index: int) -> bool:
 		return false
 	var invested := get_module_total_invested(slot["type"], slot["level"])
 	module_slots[slot_index] = {"type": ModuleType.EMPTY, "level": 0}
+	_module_disable_timers[slot_index] = 0.0
 	add_energy(invested * (DESTROY_REFUND_RATIO + get_skill_refund_bonus()))
 	_recompute_station_max_hp()
 	module_slots_changed.emit(slot_index)
@@ -460,7 +505,7 @@ func _request_destroy_rpc(slot_index: int) -> void:
 func _recompute_station_max_hp() -> void:
 	var bonus := 0.0
 	for slot in module_slots:
-		if slot["type"] == ModuleType.SHIELD:
+		if slot["type"] == ModuleType.SHIELD and not slot.get("disabled", false):
 			bonus += SHIELD_MAX_HP_BONUS_PER_LEVEL * slot["level"]
 	var new_max := (500.0 + bonus) * get_skill_max_hp_multiplier()
 	if new_max != station_max_hp:
@@ -473,7 +518,7 @@ func _recompute_station_max_hp() -> void:
 func get_player_damage_multiplier() -> float:
 	var mult := 1.0
 	for slot in module_slots:
-		if slot["type"] == ModuleType.BOOSTER:
+		if slot["type"] == ModuleType.BOOSTER and not slot.get("disabled", false):
 			mult += BOOSTER_DAMAGE_BONUS_PER_LEVEL * slot["level"]
 	return mult * get_skill_damage_multiplier()
 
@@ -507,6 +552,7 @@ func consume_charge_module(slot_index: int) -> ModuleType:
 	if mtype != ModuleType.EMERGENCY_SHIELD and mtype != ModuleType.EMP:
 		return ModuleType.EMPTY
 	module_slots[slot_index] = {"type": ModuleType.EMPTY, "level": 0}
+	_module_disable_timers[slot_index] = 0.0
 	module_slots_changed.emit(slot_index)
 	return mtype
 

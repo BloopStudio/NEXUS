@@ -10,6 +10,7 @@ const ENEMY_FAST     := preload("res://scripts/enemies/enemy_fast.gd")
 const ENEMY_TANK     := preload("res://scripts/enemies/enemy_tank.gd")
 const ENEMY_RANGED   := preload("res://scripts/enemies/enemy_ranged.gd")
 const ENEMY_SPLITTER := preload("res://scripts/enemies/enemy_splitter.gd")
+const ENEMY_SABOTEUR := preload("res://scripts/enemies/enemy_saboteur.gd")
 
 var _spawn_queue: Array[String] = []
 var _spawn_timer: float = 0.0
@@ -123,6 +124,14 @@ func _build_wave_queue(wave: int) -> Array[String]:
 		for _i in splitters:
 			q.append("splitter")
 
+	# Saboteurs from wave 4 — target modules instead of the station core, so
+	# they add a different threat pattern (protect the ring, not just the
+	# center) rather than more raw pressure.
+	if wave >= 4:
+		var saboteurs := 1 + (wave - 4) / 4
+		for _i in saboteurs:
+			q.append("saboteur")
+
 	# Shuffle to mix types
 	q.shuffle()
 	return q
@@ -149,15 +158,33 @@ func _spawn_next() -> void:
 
 	var id := _next_enemy_id
 	_next_enemy_id += 1
-	_spawn_enemy_rpc.rpc(id, type, spawn_pos)
+	_spawn_enemy_rpc.rpc(id, type, spawn_pos, _compute_target_for(type))
 	_active_enemies += 1
+
+
+## Every enemy type targets the station core except the Saboteur, which picks
+## a random currently-built module slot instead — computed once, here, on the
+## host, and sent through the spawn RPC so every peer's copy agrees on it
+## (a client independently rerolling its own random slot would only affect
+## cosmetics like facing angle, but there's no reason to let it drift).
+func _compute_target_for(type: String) -> Vector2:
+	if station_node == null:
+		return Vector2.ZERO
+	if type == "saboteur":
+		var candidates: Array[int] = []
+		for i in GameState.module_slots.size():
+			if GameState.module_slots[i]["type"] != GameState.ModuleType.EMPTY:
+				candidates.append(i)
+		if not candidates.is_empty():
+			return station_node.get_slot_world_pos(candidates[randi() % candidates.size()])
+	return station_node.global_position
 
 
 ## Creates the enemy node on every peer (host included, via call_local) so
 ## everyone sees the same wave — only the host actually simulates movement
 ## and combat (gated inside enemy_base.gd), everyone else just displays it.
 @rpc("authority", "call_local", "reliable")
-func _spawn_enemy_rpc(id: int, type: String, spawn_pos: Vector2) -> void:
+func _spawn_enemy_rpc(id: int, type: String, spawn_pos: Vector2, target_pos: Vector2) -> void:
 	if station_node == null:
 		return
 	var enemy: Node2D
@@ -167,11 +194,12 @@ func _spawn_enemy_rpc(id: int, type: String, spawn_pos: Vector2) -> void:
 		"tank":     enemy = ENEMY_TANK.new()
 		"ranged":   enemy = ENEMY_RANGED.new()
 		"splitter": enemy = ENEMY_SPLITTER.new()
+		"saboteur": enemy = ENEMY_SABOTEUR.new()
 		_:          enemy = ENEMY_BASIC.new()
 
 	enemy.enemy_id = id
 	enemy.global_position = spawn_pos
-	enemy.init(station_node.global_position)
+	enemy.init(target_pos)
 	enemy.add_to_group("enemies")
 	_enemy_registry[id] = enemy
 
@@ -258,7 +286,7 @@ func _wave_cleared() -> void:
 
 func _apply_repair_regen() -> void:
 	for slot in GameState.module_slots:
-		if slot["type"] == GameState.ModuleType.REPAIR:
+		if slot["type"] == GameState.ModuleType.REPAIR and not slot.get("disabled", false):
 			var regen: float = (20.0 + float(slot["level"]) * 15.0) * GameState.get_skill_repair_multiplier()
 			GameState.heal_station(regen)
 
@@ -290,5 +318,5 @@ func _spawn_split_children(type: String, count: int, at_pos: Vector2) -> void:
 		var offset := Vector2(cos(TAU * i / count), sin(TAU * i / count)) * 24.0
 		var id := _next_enemy_id
 		_next_enemy_id += 1
-		_spawn_enemy_rpc.rpc(id, type, at_pos + offset)
+		_spawn_enemy_rpc.rpc(id, type, at_pos + offset, _compute_target_for(type))
 		_active_enemies += 1

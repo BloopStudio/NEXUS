@@ -4,11 +4,12 @@ extends Node
 
 const SAVE_PATH := "user://settings.cfg"
 
-const REBINDABLE_ACTIONS := ["move_up", "move_down", "move_left", "move_right", "shoot", "ability", "ability_2"]
+const REBINDABLE_ACTIONS := ["move_up", "move_down", "move_left", "move_right", "shoot", "ability", "ability_2", "ping_focus", "ping_help"]
 const ACTION_LABELS := {
 	"move_up": "Avancer", "move_down": "Reculer",
 	"move_left": "Aller à gauche", "move_right": "Aller à droite",
 	"shoot": "Tirer", "ability": "Sort (emplacement 1)", "ability_2": "Sort (emplacement 2)",
+	"ping_focus": "Marqueur : Focus ici", "ping_help": "Marqueur : Besoin d'aide",
 }
 
 var fullscreen: bool = false

@@ -124,6 +124,18 @@ func _draw() -> void:
 			var dot_offset := Vector2(cos(PI / 4.0 * l) * 10, sin(PI / 4.0 * l) * 10)
 			draw_circle(pos + dot_offset, 3.0, Color.WHITE)
 
+		# Disabled overlay (Saboteur hit it) — dark wash + pulsing red
+		# ring, so it reads clearly which slot stopped working and why.
+		if slot.get("disabled", false):
+			var pulse: float = 0.5 + 0.4 * sin(Time.get_ticks_msec() / 180.0)
+			draw_circle(pos, SLOT_RADIUS, Color(0.02, 0.02, 0.03, 0.6))
+			draw_arc(pos, SLOT_RADIUS + 5, 0, TAU, 24, Color(1.0, 0.15, 0.15, pulse), 2.5)
+
+	# Synergy links — a bright pulsing line between two adjacent slots
+	# whose module types actively boost each other, so the bonus (silent
+	# and invisible otherwise) actually reads as something happening.
+	_draw_synergy_links(positions)
+
 	# HP bar (arc)
 	var hp_ratio := GameState.station_hp / GameState.station_max_hp
 	var hp_color := C_HP_BAR_OK.lerp(C_HP_BAR_LOW, 1.0 - hp_ratio)
@@ -165,6 +177,9 @@ func _draw() -> void:
 		var label: String = ModuleInfo.NAMES[mtype]
 		if mtype != GameState.ModuleType.EMPTY:
 			label += " (niv. %d)" % level
+		label += _synergy_tooltip_note(_hovered_slot, mtype)
+		if slot.get("disabled", false):
+			label += " Â· ð dÃ©sactivÃ© (Saboteur)"
 		var font := ThemeDB.fallback_font
 		var font_size := 14
 		var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
@@ -195,7 +210,7 @@ func _update_turrets(delta: float) -> void:
 
 	for i in _slot_count():
 		var slot := GameState.module_slots[i]
-		if slot["type"] != GameState.ModuleType.TURRET:
+		if slot["type"] != GameState.ModuleType.TURRET or slot.get("disabled", false):
 			continue
 
 		_turret_timers[i] -= delta
@@ -258,7 +273,7 @@ func _update_mines(delta: float) -> void:
 
 	for i in _slot_count():
 		var slot := GameState.module_slots[i]
-		if slot["type"] != GameState.ModuleType.MINE:
+		if slot["type"] != GameState.ModuleType.MINE or slot.get("disabled", false):
 			continue
 
 		_mine_timers[i] -= delta
@@ -324,6 +339,8 @@ func _on_slot_clicked_for_charge_trigger(idx: int) -> void:
 	var slot: Dictionary = GameState.module_slots[idx]
 	if slot["type"] != GameState.ModuleType.EMERGENCY_SHIELD and slot["type"] != GameState.ModuleType.EMP:
 		return
+	if slot.get("disabled", false):
+		return
 	if NetworkManager.is_host():
 		_trigger_charge_module(idx)
 	else:
@@ -382,3 +399,73 @@ func _get_slot_at(local_pos: Vector2) -> int:
 
 func get_slot_world_pos(index: int) -> Vector2:
 	return global_position + _slot_pos(index)
+
+
+## Slot closest to `world_pos` — used by the Saboteur enemy on arrival to
+## figure out which built module it actually reached (it targets a slot's
+## world position directly, but doesn't otherwise know its own index).
+func get_nearest_slot_index(world_pos: Vector2) -> int:
+	var local_pos := to_local(world_pos)
+	var best := -1
+	var best_dist := INF
+	for i in _slot_count():
+		var d := local_pos.distance_to(_slot_pos(i))
+		if d < best_dist:
+			best_dist = d
+			best = i
+	return best
+
+
+# ─── Synergy visuals ────────────────────────────────────────────────────────────
+func _draw_synergy_links(positions: Array[Vector2]) -> void:
+	var n := _slot_count()
+	if n < 2:
+		return
+	var pulse: float = 0.55 + 0.35 * sin(Time.get_ticks_msec() / 300.0)
+	for i in n:
+		var next_i := (i + 1) % n
+		var a: Dictionary = GameState.module_slots[i]
+		var b: Dictionary = GameState.module_slots[next_i]
+		if a.get("disabled", false) or b.get("disabled", false):
+			continue
+		var link_col = _synergy_link_color(a["type"], b["type"])
+		if link_col == null:
+			continue
+		var col: Color = link_col
+		col.a = pulse
+		draw_line(positions[i], positions[next_i], col, 3.0)
+		draw_circle(positions[i].lerp(positions[next_i], 0.5), 4.0, col)
+
+
+## Returns the link color for an actively-synergizing adjacent pair, or null
+## if this pair of types doesn't synergize — kept in sync with the actual
+## bonuses computed in station.gd/idle_generator.gd via
+## GameState.count_adjacent_type().
+func _synergy_link_color(type_a: int, type_b: int) -> Variant:
+	if type_a == GameState.ModuleType.TURRET and type_b == GameState.ModuleType.TURRET:
+		return Color(1.0, 0.6, 0.1)
+	if (type_a == GameState.ModuleType.MINE and type_b == GameState.ModuleType.BOOSTER) \
+			or (type_a == GameState.ModuleType.BOOSTER and type_b == GameState.ModuleType.MINE):
+		return Color(1.0, 0.25, 0.55)
+	if type_a == GameState.ModuleType.GENERATOR and type_b == GameState.ModuleType.GENERATOR:
+		return Color(1.0, 0.95, 0.3)
+	return null
+
+
+## Human-readable "+X% synergie" suffix for the hovered slot's tooltip, empty
+## if it isn't currently benefiting from one.
+func _synergy_tooltip_note(slot_index: int, mtype: int) -> String:
+	match mtype:
+		GameState.ModuleType.TURRET:
+			var adj := GameState.count_adjacent_type(slot_index, GameState.ModuleType.TURRET)
+			if adj > 0:
+				return " · +%d%% cadence (synergie)" % int(15 * adj)
+		GameState.ModuleType.MINE:
+			var adj := GameState.count_adjacent_type(slot_index, GameState.ModuleType.BOOSTER)
+			if adj > 0:
+				return " · +%d%% dégâts (synergie)" % int(25 * adj)
+		GameState.ModuleType.GENERATOR:
+			var adj := GameState.count_adjacent_type(slot_index, GameState.ModuleType.GENERATOR)
+			if adj > 0:
+				return " · +%d%% production (synergie)" % int(10 * adj)
+	return ""

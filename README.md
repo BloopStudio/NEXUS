@@ -58,11 +58,19 @@ le Bouclier d'urgence et la Bombe EMP, à usage unique et sans niveau : on
 clique sur leur emplacement pendant une vague pour les déclencher, ce qui
 les consomme.
 
+Un module touché par un ennemi Saboteur (voir Ennemis) est **désactivé**
+temporairement — encadré rouge pulsant sur son emplacement — et ne produit
+plus son effet le temps que ça dure, sans perdre son niveau.
+
 **Synergies de placement** : les emplacements sont disposés en anneau, et
 les modules voisins immédiats s'influencent :
 - 🔫 Tourelle à côté d'une autre Tourelle : cadence de tir améliorée
 - 💣 Mine à côté d'un 💪 Amplificateur : dégâts de la mine augmentés
 - ⚡ Générateur à côté d'un autre Générateur : production augmentée
+
+Une synergie active se voit directement sur la station : un lien coloré
+pulsant relie les deux emplacements concernés, et le survol de l'un d'eux
+affiche le bonus exact dans l'infobulle.
 
 ### Sorts du joueur
 Avant de démarrer une partie, chaque joueur choisit dans le menu principal
@@ -101,6 +109,13 @@ tirer ni lancer de sort. Un coéquipier qui reste ~2,5 s à proximité le
 ranime à 50% de vie ; sans aide, il se relève quand même tout seul après
 20 s à 25% de vie — jamais bloqué définitivement, seul ou abandonné.
 
+### Marqueurs tactiques
+Pas besoin d'un micro pour coordonner l'équipe : pointer la souris quelque
+part et appuyer sur **G** (Focus ici) ou **H** (Besoin d'aide), touches
+réassignables dans les réglages, pose un marqueur pulsant visible par tous
+les joueurs à cet endroit pendant quelques secondes, avec le nom de qui l'a
+posé.
+
 ### Vagues
 Des vagues d'ennemis arrivent à intervalles réguliers, de plus en plus
 nombreux ET de plus en plus forts (+9% de vie et de dégâts par vague,
@@ -115,6 +130,7 @@ Entre chaque vague : phase de construction pour améliorer la station.
 | Fast | Diamant orange | Rapide, peu de vie |
 | Tank | Hexagone violet | Lent, très résistant |
 | Ranged (dès la vague 3) | Diamant magenta | Garde ses distances et tire sur la station |
+| Saboteur (dès la vague 4) | Diamant violet à pointes | Ignore la station, fonce sur un module construit au hasard et le désactive temporairement à son contact |
 | Splitter (dès la vague 5) | Pentagone jaune | Se scinde en 2 Fast à sa mort |
 
 ### Profil local, classement et statistiques

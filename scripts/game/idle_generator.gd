@@ -19,7 +19,7 @@ func _process(delta: float) -> void:
 	var total := 0.0
 	for i in GameState.module_slots.size():
 		var slot: Dictionary = GameState.module_slots[i]
-		if slot["type"] == GameState.ModuleType.GENERATOR:
+		if slot["type"] == GameState.ModuleType.GENERATOR and not slot.get("disabled", false):
 			var level: int = slot.get("level", 0)
 			# Synergy: a Générateur next to another Générateur produces more —
 			# clustering them beats spreading them around the ring.

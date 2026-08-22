@@ -51,6 +51,12 @@ func _ready() -> void:
 	idle_gen.name = "IdleGenerator"
 	add_child(idle_gen)
 
+	# Tactical pings (team map markers) — every peer draws them the same way
+	var ping_script = load("res://scripts/game/ping_manager.gd")
+	var ping_mgr: Node = ping_script.new()
+	ping_mgr.name = "PingManager"
+	add_child(ping_mgr)
+
 	# Wave manager
 	var wm_script = load("res://scripts/game/wave_manager.gd")
 	_wave_manager = wm_script.new()
