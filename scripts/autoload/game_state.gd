@@ -10,6 +10,8 @@ signal phase_changed(new_phase: Phase)
 signal game_over()
 signal module_slots_changed(slot_index: int)
 signal skill_tree_changed()
+signal arena_expanded()
+signal outpost_changed()
 
 # ─── Enums ─────────────────────────────────────────────────────────────────────
 enum Phase { MENU, BUILD, WAVE, UPGRADE, GAME_OVER }
@@ -175,13 +177,21 @@ func _process(delta: float) -> void:
 func _broadcast_snapshot() -> void:
 	if not multiplayer.has_multiplayer_peer():
 		return
+	# Bundled as a dict (rather than more positional params) so adding a new
+	# synced field later doesn't risk a mismatched-argument-order mistake.
+	var extra := {
+		"arena_tier": arena_tier,
+		"outpost_built": outpost_built,
+		"outpost_hp": outpost_hp,
+		"outpost_max_hp": outpost_max_hp,
+	}
 	_apply_snapshot_rpc.rpc(energy, wave_number, station_hp, station_max_hp, int(phase), module_slots,
-		skill_tiers, total_damage_dealt)
+		skill_tiers, total_damage_dealt, extra)
 
 
 @rpc("authority", "reliable")
 func _apply_snapshot_rpc(e: float, w: int, hp: float, max_hp: float, ph: int, slots: Array,
-		tiers: Dictionary, dmg_dealt: float) -> void:
+		tiers: Dictionary, dmg_dealt: float, extra: Dictionary) -> void:
 	station_max_hp = max_hp
 	wave_number = w
 	energy = e
@@ -190,6 +200,19 @@ func _apply_snapshot_rpc(e: float, w: int, hp: float, max_hp: float, ph: int, sl
 	if tiers != skill_tiers:
 		skill_tiers = tiers
 		skill_tree_changed.emit()
+
+	var new_arena_tier: int = extra.get("arena_tier", 0)
+	if new_arena_tier != arena_tier:
+		arena_tier = new_arena_tier
+		arena_expanded.emit()
+
+	var new_outpost_built: bool = extra.get("outpost_built", false)
+	var new_outpost_hp: float = extra.get("outpost_hp", 0.0)
+	outpost_max_hp = extra.get("outpost_max_hp", OUTPOST_MAX_HP)
+	if new_outpost_built != outpost_built or new_outpost_hp != outpost_hp:
+		outpost_built = new_outpost_built
+		outpost_hp = new_outpost_hp
+		outpost_changed.emit()
 
 	# Only touch module_slots (and emit its signal) when something actually
 	# changed — this snapshot arrives ~7×/second, and module_slots_changed
@@ -603,6 +626,115 @@ func damage_station(amount: float) -> void:
 	station_hp -= amount
 
 
+# ─── Arena expansion ("carte qui s'agrandit par morceaux") ─────────────────
+# The playable radius (player movement bounds, enemy spawn ring) starts at
+# ARENA_BASE_RADIUS and grows in discrete steps the team pays for, same
+# rhythm as unlocking a station slot — not a full map/tile rework, just the
+# existing circular arena widening piece by piece.
+const ARENA_BASE_RADIUS := 420.0
+const ARENA_GROWTH_PER_TIER := 70.0
+const MAX_ARENA_TIER := 3
+const ARENA_EXPAND_COSTS := [220.0, 380.0, 600.0]
+
+var arena_tier: int = 0
+
+func get_arena_radius() -> float:
+	return ARENA_BASE_RADIUS + float(arena_tier) * ARENA_GROWTH_PER_TIER
+
+
+## Cost of the next arena expansion, or -1.0 if already at MAX_ARENA_TIER.
+func get_next_arena_expand_cost() -> float:
+	if arena_tier >= MAX_ARENA_TIER:
+		return -1.0
+	return ARENA_EXPAND_COSTS[arena_tier]
+
+
+func expand_arena() -> bool:
+	var cost := get_next_arena_expand_cost()
+	if cost < 0.0 or not spend_energy(cost):
+		return false
+	arena_tier += 1
+	arena_expanded.emit()
+	return true
+
+
+func request_expand_arena() -> void:
+	if NetworkManager.is_host():
+		expand_arena()
+	else:
+		_request_expand_arena_rpc.rpc_id(1)
+
+
+@rpc("any_peer", "reliable")
+func _request_expand_arena_rpc() -> void:
+	if not multiplayer.is_server():
+		return
+	expand_arena()
+
+
+# ─── Outpost ("stations multiples") ─────────────────────────────────────────
+# A second, lighter defensible point the team can build once the arena has
+# been expanded at least once (there needs to be room for it) — its own HP
+# bar, but losing it doesn't end the match like losing the main station
+# does. Some enemies target it instead of the main station (see
+# wave_manager.gd's _compute_target_for), rewarding players who don't
+# abandon it once it's up.
+const OUTPOST_MAX_HP := 220.0
+const OUTPOST_BUILD_COST := 260.0
+const OUTPOST_MIN_ARENA_TIER := 1
+## Fixed offset from the main station — simple and predictable rather than
+## player-chosen placement, which would need its own UI/networking.
+const OUTPOST_OFFSET := Vector2(0.0, -260.0)
+
+var outpost_built: bool = false
+var outpost_hp: float = 0.0
+var outpost_max_hp: float = OUTPOST_MAX_HP
+
+
+func can_build_outpost() -> bool:
+	return not outpost_built and arena_tier >= OUTPOST_MIN_ARENA_TIER
+
+
+func build_outpost() -> bool:
+	if not can_build_outpost() or not spend_energy(OUTPOST_BUILD_COST):
+		return false
+	outpost_built = true
+	outpost_max_hp = OUTPOST_MAX_HP
+	outpost_hp = OUTPOST_MAX_HP
+	outpost_changed.emit()
+	return true
+
+
+func request_build_outpost() -> void:
+	if NetworkManager.is_host():
+		build_outpost()
+	else:
+		_request_build_outpost_rpc.rpc_id(1)
+
+
+@rpc("any_peer", "reliable")
+func _request_build_outpost_rpc() -> void:
+	if not multiplayer.is_server():
+		return
+	build_outpost()
+
+
+func damage_outpost(amount: float) -> void:
+	if not outpost_built:
+		return
+	outpost_hp = maxf(0.0, outpost_hp - amount)
+	if outpost_hp <= 0.0:
+		outpost_built = false
+	outpost_changed.emit()
+
+
+func heal_outpost(amount: float) -> void:
+	if not outpost_built:
+		return
+	outpost_hp = minf(outpost_max_hp, outpost_hp + amount)
+	outpost_changed.emit()
+
+
 ## Clears a built EMERGENCY_SHIELD/EMP slot back to EMPTY and returns which
 ## type it was (EMPTY if the slot wasn't actually a charge module) — the
 ## caller (station.gd, which has scene access to apply the actual effect on
@@ -632,6 +764,10 @@ func reset(mutator: int = Mutators.Mutator.NONE) -> void:
 	skill_tiers = {SkillBranch.DAMAGE: 0, SkillBranch.ECONOMY: 0, SkillBranch.DEFENSE: 0}
 	total_damage_dealt = 0.0
 	station_invuln_timer = 0.0
+	arena_tier = 0
+	outpost_built = false
+	outpost_hp = 0.0
+	outpost_max_hp = OUTPOST_MAX_HP
 	_match_start_msec = Time.get_ticks_msec()
 	_init_slots()
 	set_phase(Phase.BUILD)

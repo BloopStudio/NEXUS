@@ -19,6 +19,12 @@ var _hit_flash := 0.0  # seconds remaining for red flash
 ## puppet copy of this enemy in sync (position/hp ticks, and removal on death).
 var enemy_id: int = -1
 
+## Set by WaveManager at spawn time — true if this enemy's `_target` is the
+## Outpost rather than the main station, so _on_reach_station() damages the
+## right one. The Saboteur ignores this (it always overrides _target to a
+## module slot instead).
+var targets_outpost: bool = false
+
 ## Facing angle (radians) toward the station — applied only to the shape
 ## drawing, not to the whole node's transform, so the HP bar above it stays
 ## upright instead of tilting along with the enemy.
@@ -34,6 +40,14 @@ const NET_INTERP_SPEED := 12.0
 # host moves enemies) — a multiplier on speed for the remaining duration.
 var _slow_factor: float = 1.0
 var _slow_timer: float = 0.0
+
+# Set by an Elite's nearby aura pulse (see enemy_elite.gd) — multiplies both
+# speed and contact damage while active, refreshed on every pulse the enemy
+# stays in range for, so it decays naturally once it wanders (or the Elite
+# dies) instead of needing separate tracking of who buffed it.
+var _buff_speed_mult: float = 1.0
+var _buff_damage_mult: float = 1.0
+var _buff_timer: float = 0.0
 
 signal died(enemy: Node2D, energy_reward: float)
 
@@ -58,9 +72,15 @@ func _process(delta: float) -> void:
 			if _slow_timer <= 0.0:
 				_slow_factor = 1.0
 
+		if _buff_timer > 0.0:
+			_buff_timer -= delta
+			if _buff_timer <= 0.0:
+				_buff_speed_mult = 1.0
+				_buff_damage_mult = 1.0
+
 		# Move toward station
 		var dir := (_target - global_position).normalized()
-		global_position += dir * speed * _slow_factor * delta
+		global_position += dir * speed * _slow_factor * _buff_speed_mult * delta
 
 		# Contact damage when close enough
 		if global_position.distance_to(_target) < shape_radius + 42.0:
@@ -71,7 +91,7 @@ func _process(delta: float) -> void:
 		# what happens if you don't dodge one on its way through.
 		for p in get_tree().get_nodes_in_group("players"):
 			if p.has_method("take_contact_damage") and global_position.distance_to(p.global_position) < shape_radius + 14.0:
-				p.take_contact_damage(contact_damage * 0.5)
+				p.take_contact_damage(contact_damage * 0.5 * _buff_damage_mult)
 	else:
 		global_position = global_position.lerp(_net_target_pos, clampf(delta * NET_INTERP_SPEED, 0.0, 1.0))
 		queue_redraw()
@@ -144,6 +164,16 @@ func apply_slow(factor: float, duration: float) -> void:
 	_slow_timer = duration
 
 
+## Host-only: applied by a nearby Elite's aura pulse (see enemy_elite.gd).
+## Refreshing simply overwrites the timer — no stacking multiple Elites'
+## buffs multiplicatively, keeps a swarm-with-two-elites from becoming an
+## unreadable damage spike.
+func apply_buff(speed_mult: float, damage_mult: float, duration: float) -> void:
+	_buff_speed_mult = speed_mult
+	_buff_damage_mult = damage_mult
+	_buff_timer = duration
+
+
 ## `from_direction` is the direction the damage traveled when it hit (e.g. a
 ## bullet's velocity direction) — Vector2.ZERO means "no particular
 ## direction" (area-of-effect sources: mines, EMP, the player's Onde de
@@ -178,7 +208,10 @@ func _on_damage_blocked() -> void:
 func _on_reach_station() -> void:
 	if not NetworkManager.is_host():
 		return
-	GameState.damage_station(contact_damage)
+	if targets_outpost and GameState.outpost_built:
+		GameState.damage_outpost(contact_damage * _buff_damage_mult)
+	else:
+		GameState.damage_station(contact_damage * _buff_damage_mult)
 	AudioManager.play_sfx(AudioManager.SFX.STATION_DAMAGE)
 	_die()
 

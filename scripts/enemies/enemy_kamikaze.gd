@@ -22,7 +22,10 @@ func _ready() -> void:
 func _on_reach_station() -> void:
 	if not NetworkManager.is_host():
 		return
-	GameState.damage_station(contact_damage)
+	if targets_outpost and GameState.outpost_built:
+		GameState.damage_outpost(contact_damage)
+	else:
+		GameState.damage_station(contact_damage)
 	AudioManager.play_sfx(AudioManager.SFX.STATION_DAMAGE)
 	for p in get_tree().get_nodes_in_group("players"):
 		if p.has_method("take_contact_damage") and global_position.distance_to(p.global_position) < EXPLOSION_RADIUS:

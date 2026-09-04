@@ -131,7 +131,8 @@ func _physics_process(delta: float) -> void:
 		var speed := SPEED * (Spells.DEFS[Spells.DASH]["speed_mult"] if _dash_timer > 0.0 else 1.0)
 		var new_pos := global_position + dir * speed * delta
 		# Keep within arena bounds
-		new_pos = new_pos.clamp(Vector2(-420, -420), Vector2(420, 420))
+		var bound := GameState.get_arena_radius()
+		new_pos = new_pos.clamp(Vector2(-bound, -bound), Vector2(bound, bound))
 		_move_rpc.rpc(new_pos)
 
 	# Shoot (default: left click, rebindable in Settings)

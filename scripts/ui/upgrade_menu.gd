@@ -79,6 +79,8 @@ var _skill_panel: PanelContainer = null
 var _skill_tree_btn: Button = null
 var _skill_tree_panel: PanelContainer = null
 var _slot_unlock_btn: Button = null
+var _arena_expand_btn: Button = null
+var _outpost_build_btn: Button = null
 # branch (GameState.SkillBranch) -> Array[Button], one per tier (3 each)
 var _skill_tier_buttons: Dictionary = {}
 
@@ -102,6 +104,8 @@ func _ready() -> void:
 	GameState.energy_changed.connect(_on_energy_changed)
 	GameState.module_slots_changed.connect(_on_module_slots_changed)
 	GameState.skill_tree_changed.connect(_on_skill_tree_changed)
+	GameState.arena_expanded.connect(_refresh_skill_tree_panel)
+	GameState.outpost_changed.connect(_refresh_skill_tree_panel)
 	_update_visibility()
 
 
@@ -443,6 +447,22 @@ func _build_skill_tree_panel() -> void:
 	_slot_unlock_btn.pressed.connect(_on_slot_unlock_pressed)
 	root_vbox.add_child(_slot_unlock_btn)
 
+	# Arena expansion ("la carte s'agrandit par morceaux") — same repeatable/
+	# increasing-cost rhythm as the slot unlock row above.
+	_arena_expand_btn = Button.new()
+	_arena_expand_btn.custom_minimum_size = Vector2(0, 40)
+	_arena_expand_btn.add_theme_font_size_override("font_size", 13)
+	_arena_expand_btn.pressed.connect(_on_arena_expand_pressed)
+	root_vbox.add_child(_arena_expand_btn)
+
+	# Outpost ("stations multiples") — one-time build, only offered once the
+	# arena has room for it (see GameState.OUTPOST_MIN_ARENA_TIER).
+	_outpost_build_btn = Button.new()
+	_outpost_build_btn.custom_minimum_size = Vector2(0, 40)
+	_outpost_build_btn.add_theme_font_size_override("font_size", 13)
+	_outpost_build_btn.pressed.connect(_on_outpost_build_pressed)
+	root_vbox.add_child(_outpost_build_btn)
+
 	var branches_row := HBoxContainer.new()
 	branches_row.add_theme_constant_override("separation", 14)
 	branches_row.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -486,6 +506,16 @@ func _on_slot_unlock_pressed() -> void:
 	GameState.request_unlock_slot()
 
 
+func _on_arena_expand_pressed() -> void:
+	AudioManager.play_sfx(AudioManager.SFX.UI_CLICK)
+	GameState.request_expand_arena()
+
+
+func _on_outpost_build_pressed() -> void:
+	AudioManager.play_sfx(AudioManager.SFX.BUILD)
+	GameState.request_build_outpost()
+
+
 func _on_skill_tier_pressed(branch: GameState.SkillBranch, tier_index: int) -> void:
 	if tier_index != GameState.get_skill_tier(branch):
 		return  # not the next tier in this branch — ignore (button should be disabled anyway)
@@ -508,6 +538,29 @@ func _refresh_skill_tree_panel() -> void:
 		_slot_unlock_btn.text = "➕ Nouvel emplacement (%d/%d) — %d ⚡" % [
 			GameState.module_slots.size(), GameState.MAX_SLOTS, int(slot_cost)]
 		_slot_unlock_btn.disabled = not can_slot
+
+	# Arena expansion row
+	var arena_cost := GameState.get_next_arena_expand_cost()
+	if arena_cost < 0.0:
+		_arena_expand_btn.text = "🗺 Carte au maximum"
+		_arena_expand_btn.disabled = true
+	else:
+		var can_arena := GameState.can_afford(arena_cost)
+		_arena_expand_btn.text = "🗺 Agrandir la carte (%d/%d) — %d ⚡" % [
+			GameState.arena_tier, GameState.MAX_ARENA_TIER, int(arena_cost)]
+		_arena_expand_btn.disabled = not can_arena
+
+	# Outpost row
+	if GameState.outpost_built:
+		_outpost_build_btn.text = "🏳 Avant-poste déjà construit"
+		_outpost_build_btn.disabled = true
+	elif GameState.arena_tier < GameState.OUTPOST_MIN_ARENA_TIER:
+		_outpost_build_btn.text = "🏳 Avant-poste (agrandir la carte d'abord)"
+		_outpost_build_btn.disabled = true
+	else:
+		var can_outpost := GameState.can_afford(GameState.OUTPOST_BUILD_COST)
+		_outpost_build_btn.text = "🏳 Construire l'avant-poste — %d ⚡" % int(GameState.OUTPOST_BUILD_COST)
+		_outpost_build_btn.disabled = not can_outpost
 
 	# Branch tier buttons
 	for branch in _skill_tier_buttons:

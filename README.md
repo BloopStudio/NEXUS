@@ -134,6 +134,21 @@ Entre chaque vague : phase de construction pour améliorer la station.
 | Bouclier (dès la vague 3) | Cercle bleu avec arc frontal | Bloque les dégâts venant de face (arc ~140°) — il faut le flanquer pour le toucher |
 | Splitter (dès la vague 5) | Pentagone jaune | Se scinde en 2 Fast à sa mort |
 | Kamikaze (dès la vague 6) | Cercle orange hérissé | Fonce vite, explose au contact (dégâts de zone à la station et aux joueurs proches) — à abattre à distance |
+| Élite (dès la vague 7) | Hexagone doré à pointes | Buffe (vitesse + dégâts) tous les ennemis dans son aura — à cibler en priorité pour couper le buff |
+| Aberration (dès la vague 15) | Silhouette violette irrégulière | Se rend invulnérable en alternance (~1s toutes les 3s) — première d'une seconde faction, oblige à rythmer les tirs |
+
+### Carte et avant-poste
+Depuis le panneau 🌳 Arbre de compétences, deux nouvelles options en plus
+des emplacements et des paliers :
+- 🗺 **Agrandir la carte** : repousse la limite jouable par paliers (3 max)
+  — plus d'espace pour se déplacer, et les ennemis apparaissent
+  proportionnellement plus loin. La limite actuelle est visible comme un
+  cercle sur le terrain.
+- 🏳 **Avant-poste** : une fois la carte agrandie au moins une fois,
+  construit un second point à défendre (sa propre barre de vie, pas
+  d'emplacements de modules). Le perdre ne termine pas la partie, mais une
+  partie des ennemis le prennent pour cible tant qu'il tient — l'abandonner
+  n'est pas gratuit.
 
 ### Modificateurs de partie
 Avant d'héberger, un menu déroulant "Modificateur" laisse choisir un

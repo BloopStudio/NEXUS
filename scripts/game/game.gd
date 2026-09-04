@@ -45,6 +45,13 @@ func _ready() -> void:
 	add_child(_station)
 	_station.slot_clicked.connect(upgrade_menu.on_slot_clicked)
 
+	# Outpost — second defensible point ("stations multiples"), hidden by
+	# its own is-it-built check until the team builds one.
+	var outpost_script = load("res://scripts/game/outpost.gd")
+	var outpost: Node2D = outpost_script.new()
+	outpost.name = "Outpost"
+	add_child(outpost)
+
 	# Idle generator (child node, host-only logic inside)
 	var idle_script = load("res://scripts/game/idle_generator.gd")
 	var idle_gen: Node = idle_script.new()
@@ -84,6 +91,7 @@ func _ready() -> void:
 
 	# Connect game_over signal
 	GameState.game_over.connect(_on_game_over)
+	GameState.arena_expanded.connect(func(): queue_redraw())
 
 	_last_station_hp = GameState.station_hp
 	GameState.station_health_changed.connect(_on_station_hp_changed)
@@ -145,6 +153,12 @@ func _draw() -> void:
 	while y <= extent:
 		draw_line(Vector2(-extent, y), Vector2(extent, y), C_GRID, 1.0)
 		y += GRID_STEP
+
+	# Arena boundary — the same radius player movement is clamped to (see
+	# player.gd), so expanding the map (GameState.arena_tier) is actually
+	# visible instead of an invisible number.
+	var r := GameState.get_arena_radius()
+	draw_arc(Vector2.ZERO, r, 0, TAU, 96, Color(0.0, 0.6, 0.8, 0.35), 2.0)
 
 
 # ─── Player spawning ────────────────────────────────────────────────────────────

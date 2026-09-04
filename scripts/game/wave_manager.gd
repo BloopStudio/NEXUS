@@ -13,6 +13,8 @@ const ENEMY_SPLITTER := preload("res://scripts/enemies/enemy_splitter.gd")
 const ENEMY_SABOTEUR := preload("res://scripts/enemies/enemy_saboteur.gd")
 const ENEMY_SHIELD   := preload("res://scripts/enemies/enemy_shield.gd")
 const ENEMY_KAMIKAZE := preload("res://scripts/enemies/enemy_kamikaze.gd")
+const ENEMY_ELITE      := preload("res://scripts/enemies/enemy_elite.gd")
+const ENEMY_ABERRATION := preload("res://scripts/enemies/enemy_aberration.gd")
 
 var _spawn_queue: Array[String] = []
 var _spawn_timer: float = 0.0
@@ -148,6 +150,20 @@ func _build_wave_queue(wave: int) -> Array[String]:
 		for _i in kamikazes:
 			q.append("kamikaze")
 
+	# Elites from wave 7 — buff every enemy near them (speed + damage) on a
+	# pulsing aura, rewarding focusing them down over spreading damage thin.
+	if wave >= 7:
+		var elites := 1 + (wave - 7) / 5
+		for _i in elites:
+			q.append("elite")
+
+	# Aberrations from wave 15 — a second, stranger faction debuts: phases
+	# fully invulnerable on a cycle, so sustained fire alone doesn't cut it.
+	if wave >= 15:
+		var aberrations := 1 + (wave - 15) / 3
+		for _i in aberrations:
+			q.append("aberration")
+
 	# Shuffle to mix types
 	q.shuffle()
 	return q
@@ -167,15 +183,28 @@ func _spawn_next() -> void:
 
 	var type: String = _spawn_queue.pop_front()
 
-	# Spawn at a random point on a circle far outside the arena
+	# Spawn at a random point on a circle far outside the arena — scales
+	# with GameState.get_arena_radius() so expanding the map keeps enemies
+	# spawning a consistent distance beyond the new, larger play area.
 	var angle := randf() * TAU
-	var spawn_radius := 480.0
+	var spawn_radius := GameState.get_arena_radius() + 60.0
 	var spawn_pos := station_node.global_position + Vector2(cos(angle), sin(angle)) * spawn_radius
 
 	var id := _next_enemy_id
 	_next_enemy_id += 1
-	_spawn_enemy_rpc.rpc(id, type, spawn_pos, _compute_target_for(type))
+	var targets_outpost := _roll_targets_outpost(type)
+	_spawn_enemy_rpc.rpc(id, type, spawn_pos, _compute_target_for(type, targets_outpost), targets_outpost)
 	_active_enemies += 1
+
+
+## The Saboteur ignores this entirely (its own module targeting always
+## wins) — for everything else, once the team has built the Outpost, some
+## enemies peel off to hit it instead of the main station, rewarding
+## players who don't just abandon it once it's up.
+const OUTPOST_TARGET_CHANCE := 0.35
+
+func _roll_targets_outpost(type: String) -> bool:
+	return type != "saboteur" and GameState.outpost_built and randf() < OUTPOST_TARGET_CHANCE
 
 
 ## Every enemy type targets the station core except the Saboteur, which picks
@@ -183,7 +212,7 @@ func _spawn_next() -> void:
 ## host, and sent through the spawn RPC so every peer's copy agrees on it
 ## (a client independently rerolling its own random slot would only affect
 ## cosmetics like facing angle, but there's no reason to let it drift).
-func _compute_target_for(type: String) -> Vector2:
+func _compute_target_for(type: String, targets_outpost: bool) -> Vector2:
 	if station_node == null:
 		return Vector2.ZERO
 	if type == "saboteur":
@@ -193,6 +222,9 @@ func _compute_target_for(type: String) -> Vector2:
 				candidates.append(i)
 		if not candidates.is_empty():
 			return station_node.get_slot_world_pos(candidates[randi() % candidates.size()])
+		return station_node.global_position
+	if targets_outpost:
+		return station_node.global_position + GameState.OUTPOST_OFFSET
 	return station_node.global_position
 
 
@@ -200,7 +232,7 @@ func _compute_target_for(type: String) -> Vector2:
 ## everyone sees the same wave — only the host actually simulates movement
 ## and combat (gated inside enemy_base.gd), everyone else just displays it.
 @rpc("authority", "call_local", "reliable")
-func _spawn_enemy_rpc(id: int, type: String, spawn_pos: Vector2, target_pos: Vector2) -> void:
+func _spawn_enemy_rpc(id: int, type: String, spawn_pos: Vector2, target_pos: Vector2, targets_outpost: bool = false) -> void:
 	if station_node == null:
 		return
 	var enemy: Node2D
@@ -213,11 +245,14 @@ func _spawn_enemy_rpc(id: int, type: String, spawn_pos: Vector2, target_pos: Vec
 		"saboteur": enemy = ENEMY_SABOTEUR.new()
 		"shield":   enemy = ENEMY_SHIELD.new()
 		"kamikaze": enemy = ENEMY_KAMIKAZE.new()
+		"elite":    enemy = ENEMY_ELITE.new()
+		"aberration": enemy = ENEMY_ABERRATION.new()
 		_:          enemy = ENEMY_BASIC.new()
 
 	enemy.enemy_id = id
 	enemy.global_position = spawn_pos
 	enemy.init(target_pos)
+	enemy.targets_outpost = targets_outpost and type != "saboteur"
 	enemy.add_to_group("enemies")
 	_enemy_registry[id] = enemy
 
@@ -336,5 +371,6 @@ func _spawn_split_children(type: String, count: int, at_pos: Vector2) -> void:
 		var offset := Vector2(cos(TAU * i / count), sin(TAU * i / count)) * 24.0
 		var id := _next_enemy_id
 		_next_enemy_id += 1
-		_spawn_enemy_rpc.rpc(id, type, at_pos + offset, _compute_target_for(type))
+		var targets_outpost := _roll_targets_outpost(type)
+		_spawn_enemy_rpc.rpc(id, type, at_pos + offset, _compute_target_for(type, targets_outpost), targets_outpost)
 		_active_enemies += 1
