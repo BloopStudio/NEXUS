@@ -423,6 +423,9 @@ func unlock_skill(branch: SkillBranch) -> bool:
 		return false
 	skill_tiers[branch] = get_skill_tier(branch) + 1
 	_recompute_station_max_hp()
+	for i in outposts.size():
+		if outposts[i]["built"]:
+			_recompute_outpost_max_hp(i)
 	skill_tree_changed.emit()
 	return true
 
@@ -679,7 +682,11 @@ func _request_expand_arena_rpc() -> void:
 # _compute_target_for), rewarding players who don't just abandon it.
 const MAX_OUTPOSTS := 2
 const OUTPOST_SLOT_COUNT := 4
-const OUTPOST_MAX_HP := 220.0
+## Base max HP before any Bouclier modules built on the outpost itself (see
+## _recompute_outpost_max_hp) — raised from the original 220 after players
+## found outposts died almost instantly to a single Tank/Kamikaze hit, well
+## before a Bouclier module or the Défense skill tier could make a dent.
+const OUTPOST_MAX_HP := 320.0
 const OUTPOST_BUILD_COST := 260.0
 ## Outpost index i needs arena_tier >= OUTPOST_MIN_ARENA_TIER[i] to build.
 const OUTPOST_MIN_ARENA_TIER := [1, 2]
@@ -721,8 +728,8 @@ func build_outpost(index: int) -> bool:
 	if not can_build_outpost(index) or not spend_energy(OUTPOST_BUILD_COST):
 		return false
 	outposts[index]["built"] = true
-	outposts[index]["max_hp"] = OUTPOST_MAX_HP
-	outposts[index]["hp"] = OUTPOST_MAX_HP
+	_recompute_outpost_max_hp(index)
+	outposts[index]["hp"] = outposts[index]["max_hp"]
 	outpost_changed.emit()
 	return true
 
@@ -790,6 +797,7 @@ func build_outpost_module(index: int, slot_index: int, type: ModuleType) -> bool
 	if not spend_energy(get_outpost_module_build_cost(type)):
 		return false
 	slots[slot_index] = {"type": type, "level": 1}
+	_recompute_outpost_max_hp(index)
 	outpost_changed.emit()
 	return true
 
@@ -806,6 +814,7 @@ func upgrade_outpost_module(index: int, slot_index: int) -> bool:
 	if not spend_energy(get_outpost_module_upgrade_cost(index, slot_index)):
 		return false
 	slots[slot_index]["level"] += 1
+	_recompute_outpost_max_hp(index)
 	outpost_changed.emit()
 	return true
 
@@ -822,8 +831,27 @@ func destroy_outpost_module(index: int, slot_index: int) -> bool:
 	var invested := get_module_total_invested(slot["type"], slot["level"])
 	slots[slot_index] = {"type": ModuleType.EMPTY, "level": 0}
 	add_energy(invested * (DESTROY_REFUND_RATIO + get_skill_refund_bonus()))
+	_recompute_outpost_max_hp(index)
 	outpost_changed.emit()
 	return true
+
+
+## Mirrors _recompute_station_max_hp() for a single outpost — Bouclier
+## modules built ON the outpost raise ITS max HP the same way they raise the
+## main station's. Was missing entirely: outposts stayed pinned at
+## OUTPOST_MAX_HP forever, so a Bouclier module built there looked buildable
+## and upgradeable but silently did nothing.
+func _recompute_outpost_max_hp(index: int) -> void:
+	if index < 0 or index >= outposts.size():
+		return
+	var bonus := 0.0
+	for slot in outposts[index]["slots"]:
+		if slot["type"] == ModuleType.SHIELD and not slot.get("disabled", false):
+			bonus += SHIELD_MAX_HP_BONUS_PER_LEVEL * slot["level"]
+	var new_max: float = (OUTPOST_MAX_HP + bonus) * get_skill_max_hp_multiplier() * get_mutator_station_hp_multiplier()
+	if new_max != outposts[index]["max_hp"]:
+		outposts[index]["max_hp"] = new_max
+		outposts[index]["hp"] = minf(outposts[index]["hp"], new_max)
 
 
 func request_build_outpost_module(index: int, slot_index: int, type: ModuleType) -> void:
