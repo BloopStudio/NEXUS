@@ -351,6 +351,18 @@ func _apply_repair_regen() -> void:
 			var regen: float = (20.0 + float(slot["level"]) * 15.0) * GameState.get_skill_repair_multiplier()
 			GameState.heal_station(regen)
 
+	# Outposts have their own Réparation slots (upgrade_menu.gd lets modules
+	# be built on them, same types as the station) but were never actually
+	# healed by them — heal_outpost() existed but nothing called it.
+	for i in GameState.outposts.size():
+		var outpost: Dictionary = GameState.outposts[i]
+		if not outpost["built"]:
+			continue
+		for slot in outpost["slots"]:
+			if slot["type"] == GameState.ModuleType.REPAIR and not slot.get("disabled", false):
+				var regen: float = (20.0 + float(slot["level"]) * 15.0) * GameState.get_skill_repair_multiplier()
+				GameState.heal_outpost(i, regen)
+
 
 func _on_enemy_died(enemy: Node2D, energy: float) -> void:
 	GameState.add_energy(energy)
