@@ -16,6 +16,7 @@ const BUILDABLE_TYPES := [
 	GameState.ModuleType.SHIELD,    GameState.ModuleType.REPAIR,
 	GameState.ModuleType.BOOSTER,   GameState.ModuleType.MINE,
 	GameState.ModuleType.EMERGENCY_SHIELD, GameState.ModuleType.EMP,
+	GameState.ModuleType.DRILL,
 ]
 
 ## Modules with no level/upgrade path — one-time use, triggered by clicking
@@ -31,6 +32,7 @@ const CHARGE_TYPES := [GameState.ModuleType.EMERGENCY_SHIELD, GameState.ModuleTy
 # current bonuses (damage/idle/repair/max-HP tiers) so the displayed numbers
 # are what the module ACTUALLY does right now, not just its flat base value.
 const GENERATOR_PER_SEC := {1: 3.0, 2: 6.0, 3: 11.0}
+const MATERIALS_PER_SEC := {1: 0.4, 2: 0.8, 3: 1.4}
 const TURRET_DAMAGE := {1: 15.0, 2: 28.0, 3: 50.0}
 const TURRET_COOLDOWN := {1: 2.5, 2: 1.8, 3: 1.2}
 const MINE_DAMAGE := {1: 20.0, 2: 35.0, 3: 55.0}
@@ -54,6 +56,8 @@ func get_module_effect_text(mtype: int, level: int) -> String:
 		GameState.ModuleType.GENERATOR:
 			var per_sec: float = GENERATOR_PER_SEC[level] * GameState.get_skill_idle_multiplier()
 			return "+%.1f énergie/s" % per_sec
+		GameState.ModuleType.DRILL:
+			return "+%.1f ⛏ matériaux rares/s" % MATERIALS_PER_SEC[level]
 		GameState.ModuleType.TURRET:
 			var dmg: float = TURRET_DAMAGE[level] * GameState.get_skill_damage_multiplier() * GameState.get_mutator_damage_multiplier()
 			return "%d dégâts, tir toutes les %.1f s" % [int(dmg), TURRET_COOLDOWN[level]]
@@ -80,6 +84,7 @@ var _skill_tree_btn: Button = null
 var _skill_tree_panel: PanelContainer = null
 var _slot_unlock_btn: Button = null
 var _arena_expand_btn: Button = null
+var _rare_hp_btn: Button = null
 var _outpost_build_btns: Array[Button] = []
 # branch (GameState.SkillBranch) -> Array[Button], one per tier (3 each)
 var _skill_tier_buttons: Dictionary = {}
@@ -107,6 +112,7 @@ func _ready() -> void:
 	_build_ui()
 	GameState.phase_changed.connect(_on_phase_changed)
 	GameState.energy_changed.connect(_on_energy_changed)
+	GameState.rare_materials_changed.connect(_on_rare_materials_changed)
 	GameState.module_slots_changed.connect(_on_module_slots_changed)
 	GameState.skill_tree_changed.connect(_on_skill_tree_changed)
 	GameState.arena_expanded.connect(_refresh_skill_tree_panel)
@@ -143,8 +149,8 @@ func _build_ui() -> void:
 	_skill_panel.anchor_right = 0.0
 	_skill_panel.offset_left = 8.0
 	_skill_panel.offset_right = 236.0
-	_skill_panel.offset_top = 64.0
-	_skill_panel.offset_bottom = 100.0
+	_skill_panel.offset_top = 82.0
+	_skill_panel.offset_bottom = 118.0
 	add_child(_skill_panel)
 
 	_skill_tree_btn = Button.new()
@@ -435,6 +441,10 @@ func _on_energy_changed(_val: float) -> void:
 	_refresh_skill_tree_panel()
 
 
+func _on_rare_materials_changed(_val: float) -> void:
+	_refresh_skill_tree_panel()
+
+
 ## A slot's contents changed — either locally, another player built/upgraded
 ## it over the network, or a full snapshot just landed (-1 = refresh all).
 ## Keep the panel in sync if it's showing the affected slot.
@@ -535,6 +545,14 @@ func _build_skill_tree_panel() -> void:
 	_arena_expand_btn.pressed.connect(_on_arena_expand_pressed)
 	root_vbox.add_child(_arena_expand_btn)
 
+	# Forge orbitale — paid in ⛏ matériaux rares (Foreuse modules) rather
+	# than energy, a second currency sink so building Foreuses has a payoff.
+	_rare_hp_btn = Button.new()
+	_rare_hp_btn.custom_minimum_size = Vector2(0, 40)
+	_rare_hp_btn.add_theme_font_size_override("font_size", 13)
+	_rare_hp_btn.pressed.connect(_on_rare_hp_pressed)
+	root_vbox.add_child(_rare_hp_btn)
+
 	# Outposts ("stations multiples") — one button per outpost slot, each a
 	# one-time build only offered once the arena has room for it (see
 	# GameState.OUTPOST_MIN_ARENA_TIER).
@@ -595,6 +613,11 @@ func _on_arena_expand_pressed() -> void:
 	GameState.request_expand_arena()
 
 
+func _on_rare_hp_pressed() -> void:
+	AudioManager.play_sfx(AudioManager.SFX.UPGRADE)
+	GameState.request_unlock_rare_hp_tier()
+
+
 func _on_outpost_build_pressed(index: int) -> void:
 	AudioManager.play_sfx(AudioManager.SFX.BUILD)
 	GameState.request_build_outpost(index)
@@ -633,6 +656,18 @@ func _refresh_skill_tree_panel() -> void:
 		_arena_expand_btn.text = "🗺 Agrandir la carte (%d/%d) — %d ⚡" % [
 			GameState.arena_tier, GameState.MAX_ARENA_TIER, int(arena_cost)]
 		_arena_expand_btn.disabled = not can_arena
+
+	# Forge orbitale row — paid in rare materials, not energy
+	var rare_hp_cost := GameState.get_next_rare_hp_tier_cost()
+	if rare_hp_cost < 0.0:
+		_rare_hp_btn.text = "🔩 Forge orbitale au maximum"
+		_rare_hp_btn.disabled = true
+	else:
+		var can_rare_hp := GameState.can_afford_materials(rare_hp_cost)
+		_rare_hp_btn.text = "🔩 Forge orbitale (%d/%d) — +%d%% vie max (station+avant-postes) — %d ⛏" % [
+			GameState.rare_hp_tier, GameState.RARE_HP_TIER_COSTS.size(),
+			int(GameState.RARE_HP_BONUS_PER_TIER * 100), int(rare_hp_cost)]
+		_rare_hp_btn.disabled = not can_rare_hp
 
 	# Outpost rows — one per outpost slot
 	for i in _outpost_build_btns.size():

@@ -23,6 +23,7 @@ const MODULE_COLORS := {
 	4: Color(0.2,  1.0,  0.3),    # REPAIR
 	5: Color(1.0,  0.15, 0.7),    # BOOSTER
 	6: Color(0.9,  0.2,  0.15),   # MINE
+	9: Color(0.75, 0.5,  0.25),   # DRILL
 }
 
 const MINE_RADIUS := 130.0

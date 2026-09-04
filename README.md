@@ -51,12 +51,21 @@ Les paliers d'une branche se débloquent dans l'ordre.
 | 💣 Mine | Dégâts de zone périodiques à tous les ennemis proches |
 | 🚨 Bouclier d'urgence | Usage unique — clic pendant une vague : soigne 30% de la vie max + invulnérabilité 3 s |
 | ☢ Bombe EMP | Usage unique — clic pendant une vague : dégâts + étourdit tous les ennemis à l'écran |
+| ⛏ Foreuse | Produit passivement des matériaux rares (deuxième monnaie, séparée de l'énergie) |
 
 Chaque module a 3 niveaux d'amélioration, et peut être détruit pour
 récupérer 30% de l'énergie investie (construction + améliorations) — sauf
 le Bouclier d'urgence et la Bombe EMP, à usage unique et sans niveau : on
 clique sur leur emplacement pendant une vague pour les déclencher, ce qui
 les consomme.
+
+### Matériaux rares
+Les modules ⛏ Foreuse (constructibles sur la station comme sur les
+avant-postes) produisent une deuxième monnaie, séparée de l'énergie : les
+matériaux rares. Depuis l'Arbre de compétences, le bouton **🔩 Forge
+orbitale** (3 paliers) les échange contre +10% de vie max permanente pour
+la station ET chaque avant-poste construit — un deuxième axe de
+progression indépendant de l'économie d'énergie habituelle.
 
 Un module touché par un ennemi Saboteur (voir Ennemis) est **désactivé**
 temporairement — encadré rouge pulsant sur son emplacement — et ne produit

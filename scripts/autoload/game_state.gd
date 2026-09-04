@@ -12,6 +12,7 @@ signal module_slots_changed(slot_index: int)
 signal skill_tree_changed()
 signal arena_expanded()
 signal outpost_changed()
+signal rare_materials_changed(new_value: float)
 
 # ─── Enums ─────────────────────────────────────────────────────────────────────
 enum Phase { MENU, BUILD, WAVE, UPGRADE, GAME_OVER }
@@ -21,7 +22,7 @@ enum Phase { MENU, BUILD, WAVE, UPGRADE, GAME_OVER }
 # network) stay stable. EMERGENCY_SHIELD/EMP are single-charge: triggered by
 # clicking their built slot during a WAVE (not built passively like the
 # others), consumed on use — see station.gd's charge-module handling.
-enum ModuleType { EMPTY, GENERATOR, TURRET, SHIELD, REPAIR, BOOSTER, MINE, EMERGENCY_SHIELD, EMP }
+enum ModuleType { EMPTY, GENERATOR, TURRET, SHIELD, REPAIR, BOOSTER, MINE, EMERGENCY_SHIELD, EMP, DRILL }
 
 # ─── Costs (energy) ────────────────────────────────────────────────────────────
 const MODULE_COSTS := {
@@ -33,6 +34,7 @@ const MODULE_COSTS := {
 	ModuleType.MINE:      55,
 	ModuleType.EMERGENCY_SHIELD: 70,
 	ModuleType.EMP:              90,
+	ModuleType.DRILL:     65,
 }
 const EMERGENCY_SHIELD_HEAL_RATIO := 0.3
 const EMERGENCY_SHIELD_INVULN_SECONDS := 3.0
@@ -96,6 +98,14 @@ var energy: float = 50.0:
 	set(v):
 		energy = maxf(0.0, v)
 		energy_changed.emit(energy)
+
+## Second progression currency, produced by DRILL modules (see idle_generator.gd)
+## instead of energy — scarcer and spent only on the Forge orbitale HP tiers
+## below, so it doesn't compete with the regular build/upgrade economy.
+var rare_materials: float = 0.0:
+	set(v):
+		rare_materials = maxf(0.0, v)
+		rare_materials_changed.emit(rare_materials)
 
 var wave_number: int = 0:
 	set(v):
@@ -183,6 +193,8 @@ func _broadcast_snapshot() -> void:
 	var extra := {
 		"arena_tier": arena_tier,
 		"outposts": outposts,
+		"rare_materials": rare_materials,
+		"rare_hp_tier": rare_hp_tier,
 	}
 	_apply_snapshot_rpc.rpc(energy, wave_number, station_hp, station_max_hp, int(phase), module_slots,
 		skill_tiers, total_damage_dealt, extra)
@@ -211,6 +223,12 @@ func _apply_snapshot_rpc(e: float, w: int, hp: float, max_hp: float, ph: int, sl
 		for o in new_outposts:
 			outposts.append(o as Dictionary)
 		outpost_changed.emit()
+
+	rare_materials = extra.get("rare_materials", 0.0)
+	var new_rare_hp_tier: int = extra.get("rare_hp_tier", 0)
+	if new_rare_hp_tier != rare_hp_tier:
+		rare_hp_tier = new_rare_hp_tier
+		skill_tree_changed.emit()
 
 	# Only touch module_slots (and emit its signal) when something actually
 	# changed — this snapshot arrives ~7×/second, and module_slots_changed
@@ -503,6 +521,68 @@ func add_energy(amount: float) -> void:
 	energy += amount
 
 
+# ─── Rare materials (Foreuse module) ────────────────────────────────────────────
+func can_afford_materials(cost: float) -> bool:
+	return rare_materials >= cost
+
+
+func spend_materials(cost: float) -> bool:
+	if not can_afford_materials(cost):
+		return false
+	rare_materials -= cost
+	return true
+
+
+func add_rare_materials(amount: float) -> void:
+	rare_materials += amount
+
+
+## "Forge orbitale" — a repeatable purchase (like the arena/slot unlocks,
+## but paid in rare materials instead of energy) that permanently raises the
+## max HP of the station AND every built outpost. Gives the Foreuse's output
+## a concrete payoff beyond just "a number going up".
+const RARE_HP_BONUS_PER_TIER := 0.10
+const RARE_HP_TIER_COSTS := [60.0, 120.0, 220.0]
+var rare_hp_tier: int = 0
+
+
+func get_rare_materials_hp_multiplier() -> float:
+	return 1.0 + RARE_HP_BONUS_PER_TIER * rare_hp_tier
+
+
+func get_next_rare_hp_tier_cost() -> float:
+	if rare_hp_tier >= RARE_HP_TIER_COSTS.size():
+		return -1.0
+	return RARE_HP_TIER_COSTS[rare_hp_tier]
+
+
+func unlock_rare_hp_tier() -> bool:
+	var cost := get_next_rare_hp_tier_cost()
+	if cost < 0.0 or not spend_materials(cost):
+		return false
+	rare_hp_tier += 1
+	_recompute_station_max_hp()
+	for i in outposts.size():
+		if outposts[i]["built"]:
+			_recompute_outpost_max_hp(i)
+	skill_tree_changed.emit()
+	return true
+
+
+func request_unlock_rare_hp_tier() -> void:
+	if NetworkManager.is_host():
+		unlock_rare_hp_tier()
+	else:
+		_request_unlock_rare_hp_tier_rpc.rpc_id(1)
+
+
+@rpc("any_peer", "reliable")
+func _request_unlock_rare_hp_tier_rpc() -> void:
+	if not multiplayer.is_server():
+		return
+	unlock_rare_hp_tier()
+
+
 # ─── Module helpers ────────────────────────────────────────────────────────────
 func get_module_build_cost(type: ModuleType) -> float:
 	return MODULE_COSTS.get(type, 999.0) * get_skill_cost_multiplier() * get_mutator_cost_multiplier()
@@ -596,7 +676,7 @@ func _recompute_station_max_hp() -> void:
 	for slot in module_slots:
 		if slot["type"] == ModuleType.SHIELD and not slot.get("disabled", false):
 			bonus += SHIELD_MAX_HP_BONUS_PER_LEVEL * slot["level"]
-	var new_max := (500.0 + bonus) * get_skill_max_hp_multiplier() * get_mutator_station_hp_multiplier()
+	var new_max := (500.0 + bonus) * get_skill_max_hp_multiplier() * get_mutator_station_hp_multiplier() * get_rare_materials_hp_multiplier()
 	if new_max != station_max_hp:
 		station_max_hp = new_max
 		station_hp = station_hp  # re-run the setter so it re-clamps against the new max
@@ -609,6 +689,15 @@ func get_player_damage_multiplier() -> float:
 	for slot in module_slots:
 		if slot["type"] == ModuleType.BOOSTER and not slot.get("disabled", false):
 			mult += BOOSTER_DAMAGE_BONUS_PER_LEVEL * slot["level"]
+	# Outpost BOOSTER modules were buildable/upgradable but never actually
+	# counted here — same class of bug as the outpost Réparation/Bouclier
+	# fixes above (a duplicated economy that missed one of its apply sites).
+	for outpost in outposts:
+		if not outpost["built"]:
+			continue
+		for slot in outpost["slots"]:
+			if slot["type"] == ModuleType.BOOSTER and not slot.get("disabled", false):
+				mult += BOOSTER_DAMAGE_BONUS_PER_LEVEL * slot["level"]
 	return mult * get_skill_damage_multiplier() * get_mutator_damage_multiplier()
 
 
@@ -848,7 +937,7 @@ func _recompute_outpost_max_hp(index: int) -> void:
 	for slot in outposts[index]["slots"]:
 		if slot["type"] == ModuleType.SHIELD and not slot.get("disabled", false):
 			bonus += SHIELD_MAX_HP_BONUS_PER_LEVEL * slot["level"]
-	var new_max: float = (OUTPOST_MAX_HP + bonus) * get_skill_max_hp_multiplier() * get_mutator_station_hp_multiplier()
+	var new_max: float = (OUTPOST_MAX_HP + bonus) * get_skill_max_hp_multiplier() * get_mutator_station_hp_multiplier() * get_rare_materials_hp_multiplier()
 	if new_max != outposts[index]["max_hp"]:
 		outposts[index]["max_hp"] = new_max
 		outposts[index]["hp"] = minf(outposts[index]["hp"], new_max)
@@ -931,6 +1020,8 @@ func consume_charge_module(slot_index: int) -> ModuleType:
 func reset(mutator: int = Mutators.Mutator.NONE) -> void:
 	active_mutator = mutator
 	energy = 50.0
+	rare_materials = 0.0
+	rare_hp_tier = 0
 	wave_number = 0
 	station_max_hp = 500.0 * get_mutator_station_hp_multiplier()
 	station_hp = station_max_hp

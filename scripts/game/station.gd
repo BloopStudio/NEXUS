@@ -27,6 +27,7 @@ const MODULE_COLORS := {
 	6: Color(0.9,  0.2,  0.15),   # MINE       — red
 	7: Color(1.0,  0.7,  0.1),    # EMERGENCY_SHIELD — amber
 	8: Color(0.4,  1.0,  0.4),    # EMP        — radioactive green
+	9: Color(0.75, 0.5,  0.25),   # DRILL      — copper
 }
 
 var _hovered_slot: int = -1

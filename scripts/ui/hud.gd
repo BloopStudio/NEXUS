@@ -10,6 +10,7 @@ const C_HP_OK   := Color(0.2, 0.9, 0.3)
 const C_HP_LOW  := Color(1.0, 0.3, 0.1)
 
 var _energy_label:  Label      = null
+var _materials_label: Label    = null
 var _wave_label:    Label      = null
 var _timer_bar:     ColorRect  = null
 var _timer_bar_bg:  ColorRect  = null
@@ -44,13 +45,25 @@ func _build_ui() -> void:
 	# viewport) rather than pinned to fixed pixel coordinates, so the HUD
 	# stays correctly placed if the window is resized.
 
-	# ── Top-left: Energy ──────────────────────────────────────────────────────
-	var tl := _panel_anchored(0.0, 0.0, Vector2(8, 8), Vector2(208, 48))
+	# ── Top-left: Energy + rare materials ─────────────────────────────────────
+	var tl := _panel_anchored(0.0, 0.0, Vector2(8, 8), Vector2(208, 66))
+	var tl_vbox := VBoxContainer.new()
+	tl.add_child(tl_vbox)
 	_energy_label = Label.new()
 	_energy_label.add_theme_font_size_override("font_size", 18)
 	_energy_label.add_theme_color_override("font_color", C_ACCENT)
 	_energy_label.text = "ÉNERGIE: 50"
-	tl.add_child(_energy_label)
+	tl_vbox.add_child(_energy_label)
+
+	# Only meaningful once a Foreuse module exists somewhere on the team, but
+	# always shown at 0 rather than conditionally — simpler than plumbing a
+	# "has a Foreuse ever been built" flag through, and a "0" is itself a
+	# hint the module exists and does something.
+	_materials_label = Label.new()
+	_materials_label.add_theme_font_size_override("font_size", 13)
+	_materials_label.add_theme_color_override("font_color", Color(0.85, 0.65, 0.4))
+	_materials_label.text = "⛏ MATÉRIAUX: 0"
+	tl_vbox.add_child(_materials_label)
 
 	# ── Top-center: Wave + countdown bar ─────────────────────────────────────
 	var tc_root := PanelContainer.new()
@@ -222,6 +235,7 @@ func _build_ui() -> void:
 
 func _connect_signals() -> void:
 	GameState.energy_changed.connect(_on_energy_changed)
+	GameState.rare_materials_changed.connect(_on_rare_materials_changed)
 	GameState.wave_changed.connect(_on_wave_changed)
 	GameState.station_health_changed.connect(_on_station_health_changed)
 	GameState.phase_changed.connect(_on_phase_changed)
@@ -235,6 +249,10 @@ func _connect_signals() -> void:
 
 func _on_energy_changed(val: float) -> void:
 	_energy_label.text = "ÉNERGIE: %d" % int(val)
+
+
+func _on_rare_materials_changed(val: float) -> void:
+	_materials_label.text = "⛏ MATÉRIAUX: %d" % int(val)
 
 
 func _on_wave_changed(num: int) -> void:

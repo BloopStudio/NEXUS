@@ -3,5 +3,5 @@
 ## the slot hover tooltip) — a single shared source avoids the two drifting.
 class_name ModuleInfo
 
-const ICONS := ["➕", "⚡", "🔫", "🛡", "❤", "💪", "💣", "🚨", "☢"]
-const NAMES := ["Vide", "Générateur", "Tourelle", "Bouclier", "Réparation", "Amplificateur", "Mine", "Bouclier d'urgence", "Bombe EMP"]
+const ICONS := ["➕", "⚡", "🔫", "🛡", "❤", "💪", "💣", "🚨", "☢", "⛏"]
+const NAMES := ["Vide", "Générateur", "Tourelle", "Bouclier", "Réparation", "Amplificateur", "Mine", "Bouclier d'urgence", "Bombe EMP", "Foreuse"]
