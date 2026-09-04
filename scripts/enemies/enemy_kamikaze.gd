@@ -22,8 +22,9 @@ func _ready() -> void:
 func _on_reach_station() -> void:
 	if not NetworkManager.is_host():
 		return
-	if targets_outpost and GameState.outpost_built:
-		GameState.damage_outpost(contact_damage)
+	if target_outpost_index >= 0 and target_outpost_index < GameState.outposts.size() \
+			and GameState.outposts[target_outpost_index]["built"]:
+		GameState.damage_outpost(target_outpost_index, contact_damage)
 	else:
 		GameState.damage_station(contact_damage)
 	AudioManager.play_sfx(AudioManager.SFX.STATION_DAMAGE)

@@ -150,6 +150,7 @@ func get_survival_seconds() -> float:
 # ─── Init ──────────────────────────────────────────────────────────────────────
 func _ready() -> void:
 	_init_slots()
+	_init_outposts()
 	set_process(true)
 
 
@@ -181,9 +182,7 @@ func _broadcast_snapshot() -> void:
 	# synced field later doesn't risk a mismatched-argument-order mistake.
 	var extra := {
 		"arena_tier": arena_tier,
-		"outpost_built": outpost_built,
-		"outpost_hp": outpost_hp,
-		"outpost_max_hp": outpost_max_hp,
+		"outposts": outposts,
 	}
 	_apply_snapshot_rpc.rpc(energy, wave_number, station_hp, station_max_hp, int(phase), module_slots,
 		skill_tiers, total_damage_dealt, extra)
@@ -206,12 +205,11 @@ func _apply_snapshot_rpc(e: float, w: int, hp: float, max_hp: float, ph: int, sl
 		arena_tier = new_arena_tier
 		arena_expanded.emit()
 
-	var new_outpost_built: bool = extra.get("outpost_built", false)
-	var new_outpost_hp: float = extra.get("outpost_hp", 0.0)
-	outpost_max_hp = extra.get("outpost_max_hp", OUTPOST_MAX_HP)
-	if new_outpost_built != outpost_built or new_outpost_hp != outpost_hp:
-		outpost_built = new_outpost_built
-		outpost_hp = new_outpost_hp
+	var new_outposts: Array = extra.get("outposts", [])
+	if not _outposts_equal(outposts, new_outposts):
+		outposts.clear()
+		for o in new_outposts:
+			outposts.append(o as Dictionary)
 		outpost_changed.emit()
 
 	# Only touch module_slots (and emit its signal) when something actually
@@ -672,67 +670,214 @@ func _request_expand_arena_rpc() -> void:
 	expand_arena()
 
 
-# ─── Outpost ("stations multiples") ─────────────────────────────────────────
-# A second, lighter defensible point the team can build once the arena has
-# been expanded at least once (there needs to be room for it) — its own HP
-# bar, but losing it doesn't end the match like losing the main station
-# does. Some enemies target it instead of the main station (see
-# wave_manager.gd's _compute_target_for), rewarding players who don't
-# abandon it once it's up.
+# ─── Outposts ("stations multiples") ────────────────────────────────────────
+# Up to MAX_OUTPOSTS secondary defensible points the team can build once the
+# arena has grown enough to fit them — each with its own HP and a small ring
+# of module slots (regular build/upgrade/destroy, same module types as the
+# main station). Losing one doesn't end the match. Some enemies target a
+# built outpost instead of the main station (see wave_manager.gd's
+# _compute_target_for), rewarding players who don't just abandon it.
+const MAX_OUTPOSTS := 2
+const OUTPOST_SLOT_COUNT := 4
 const OUTPOST_MAX_HP := 220.0
 const OUTPOST_BUILD_COST := 260.0
-const OUTPOST_MIN_ARENA_TIER := 1
-## Fixed offset from the main station — simple and predictable rather than
-## player-chosen placement, which would need its own UI/networking.
-const OUTPOST_OFFSET := Vector2(0.0, -260.0)
+## Outpost index i needs arena_tier >= OUTPOST_MIN_ARENA_TIER[i] to build.
+const OUTPOST_MIN_ARENA_TIER := [1, 2]
+## Each outpost sits in a fixed direction from the main station, at a
+## distance scaled to the CURRENT arena radius (so it grows further out as
+## the map expands instead of staying pinned close to the middle).
+const OUTPOST_DIRECTIONS := [Vector2(0.0, -1.0), Vector2(0.0, 1.0)]
+const OUTPOST_DISTANCE_RATIO := 0.8
 
-var outpost_built: bool = false
-var outpost_hp: float = 0.0
-var outpost_max_hp: float = OUTPOST_MAX_HP
-
-
-func can_build_outpost() -> bool:
-	return not outpost_built and arena_tier >= OUTPOST_MIN_ARENA_TIER
+## Each entry: {"built": bool, "hp": float, "max_hp": float, "slots": Array[Dictionary]}
+var outposts: Array[Dictionary] = []
 
 
-func build_outpost() -> bool:
-	if not can_build_outpost() or not spend_energy(OUTPOST_BUILD_COST):
+func _init_outposts() -> void:
+	outposts.clear()
+	for i in MAX_OUTPOSTS:
+		var slots: Array[Dictionary] = []
+		for j in OUTPOST_SLOT_COUNT:
+			slots.append({"type": ModuleType.EMPTY, "level": 0})
+		outposts.append({"built": false, "hp": 0.0, "max_hp": OUTPOST_MAX_HP, "slots": slots})
+
+
+## World-space offset from the main station for outpost `index`, scaled to
+## the current (possibly expanded) arena radius.
+func get_outpost_offset(index: int) -> Vector2:
+	if index < 0 or index >= OUTPOST_DIRECTIONS.size():
+		return Vector2.ZERO
+	return OUTPOST_DIRECTIONS[index] * get_arena_radius() * OUTPOST_DISTANCE_RATIO
+
+
+func can_build_outpost(index: int) -> bool:
+	if index < 0 or index >= outposts.size() or outposts[index]["built"]:
 		return false
-	outpost_built = true
-	outpost_max_hp = OUTPOST_MAX_HP
-	outpost_hp = OUTPOST_MAX_HP
+	var min_tier: int = OUTPOST_MIN_ARENA_TIER[index] if index < OUTPOST_MIN_ARENA_TIER.size() else 1
+	return arena_tier >= min_tier
+
+
+func build_outpost(index: int) -> bool:
+	if not can_build_outpost(index) or not spend_energy(OUTPOST_BUILD_COST):
+		return false
+	outposts[index]["built"] = true
+	outposts[index]["max_hp"] = OUTPOST_MAX_HP
+	outposts[index]["hp"] = OUTPOST_MAX_HP
 	outpost_changed.emit()
 	return true
 
 
-func request_build_outpost() -> void:
+func request_build_outpost(index: int) -> void:
 	if NetworkManager.is_host():
-		build_outpost()
+		build_outpost(index)
 	else:
-		_request_build_outpost_rpc.rpc_id(1)
+		_request_build_outpost_rpc.rpc_id(1, index)
 
 
 @rpc("any_peer", "reliable")
-func _request_build_outpost_rpc() -> void:
+func _request_build_outpost_rpc(index: int) -> void:
 	if not multiplayer.is_server():
 		return
-	build_outpost()
+	build_outpost(index)
 
 
-func damage_outpost(amount: float) -> void:
-	if not outpost_built:
+func damage_outpost(index: int, amount: float) -> void:
+	if index < 0 or index >= outposts.size() or not outposts[index]["built"]:
 		return
-	outpost_hp = maxf(0.0, outpost_hp - amount)
-	if outpost_hp <= 0.0:
-		outpost_built = false
+	outposts[index]["hp"] = maxf(0.0, outposts[index]["hp"] - amount)
+	if outposts[index]["hp"] <= 0.0:
+		outposts[index]["built"] = false
+		# Losing the outpost loses what was built on it too — not defending
+		# it has a real cost, not just a temporary setback.
+		var slots: Array = outposts[index]["slots"]
+		for j in slots.size():
+			slots[j] = {"type": ModuleType.EMPTY, "level": 0}
 	outpost_changed.emit()
 
 
-func heal_outpost(amount: float) -> void:
-	if not outpost_built:
+func heal_outpost(index: int, amount: float) -> void:
+	if index < 0 or index >= outposts.size() or not outposts[index]["built"]:
 		return
-	outpost_hp = minf(outpost_max_hp, outpost_hp + amount)
+	outposts[index]["hp"] = minf(outposts[index]["max_hp"], outposts[index]["hp"] + amount)
 	outpost_changed.emit()
+
+
+# ─── Outpost module slots ───────────────────────────────────────────────────
+# Deliberately separate from the main station's build_module/upgrade_module/
+# destroy_module (rather than a shared/parametrized version) — this way
+# nothing about the already-hardened main-station economy functions has to
+# change to support a second location.
+func get_outpost_module_build_cost(type: ModuleType) -> float:
+	return MODULE_COSTS.get(type, 999.0) * get_skill_cost_multiplier() * get_mutator_cost_multiplier()
+
+
+func get_outpost_module_upgrade_cost(index: int, slot_index: int) -> float:
+	var slot: Dictionary = outposts[index]["slots"][slot_index]
+	if slot["type"] == ModuleType.EMPTY:
+		return 0.0
+	var base: float = MODULE_COSTS.get(slot["type"], 0.0)
+	return base * pow(UPGRADE_COST_MULTIPLIER, slot["level"]) * get_skill_cost_multiplier() * get_mutator_cost_multiplier()
+
+
+func build_outpost_module(index: int, slot_index: int, type: ModuleType) -> bool:
+	if index < 0 or index >= outposts.size() or not outposts[index]["built"]:
+		return false
+	var slots: Array = outposts[index]["slots"]
+	if slot_index < 0 or slot_index >= slots.size():
+		return false
+	if not MODULE_COSTS.has(type):
+		return false
+	if not spend_energy(get_outpost_module_build_cost(type)):
+		return false
+	slots[slot_index] = {"type": type, "level": 1}
+	outpost_changed.emit()
+	return true
+
+
+func upgrade_outpost_module(index: int, slot_index: int) -> bool:
+	if index < 0 or index >= outposts.size():
+		return false
+	var slots: Array = outposts[index]["slots"]
+	if slot_index < 0 or slot_index >= slots.size():
+		return false
+	var slot: Dictionary = slots[slot_index]
+	if slot["type"] == ModuleType.EMPTY or slot["level"] >= 3:
+		return false
+	if not spend_energy(get_outpost_module_upgrade_cost(index, slot_index)):
+		return false
+	slots[slot_index]["level"] += 1
+	outpost_changed.emit()
+	return true
+
+
+func destroy_outpost_module(index: int, slot_index: int) -> bool:
+	if index < 0 or index >= outposts.size():
+		return false
+	var slots: Array = outposts[index]["slots"]
+	if slot_index < 0 or slot_index >= slots.size():
+		return false
+	var slot: Dictionary = slots[slot_index]
+	if slot["type"] == ModuleType.EMPTY:
+		return false
+	var invested := get_module_total_invested(slot["type"], slot["level"])
+	slots[slot_index] = {"type": ModuleType.EMPTY, "level": 0}
+	add_energy(invested * (DESTROY_REFUND_RATIO + get_skill_refund_bonus()))
+	outpost_changed.emit()
+	return true
+
+
+func request_build_outpost_module(index: int, slot_index: int, type: ModuleType) -> void:
+	if NetworkManager.is_host():
+		build_outpost_module(index, slot_index, type)
+	else:
+		_request_build_outpost_module_rpc.rpc_id(1, index, slot_index, int(type))
+
+
+@rpc("any_peer", "reliable")
+func _request_build_outpost_module_rpc(index: int, slot_index: int, type: int) -> void:
+	if not multiplayer.is_server():
+		return
+	build_outpost_module(index, slot_index, type as ModuleType)
+
+
+func request_upgrade_outpost_module(index: int, slot_index: int) -> void:
+	if NetworkManager.is_host():
+		upgrade_outpost_module(index, slot_index)
+	else:
+		_request_upgrade_outpost_module_rpc.rpc_id(1, index, slot_index)
+
+
+@rpc("any_peer", "reliable")
+func _request_upgrade_outpost_module_rpc(index: int, slot_index: int) -> void:
+	if not multiplayer.is_server():
+		return
+	upgrade_outpost_module(index, slot_index)
+
+
+func request_destroy_outpost_module(index: int, slot_index: int) -> void:
+	if NetworkManager.is_host():
+		destroy_outpost_module(index, slot_index)
+	else:
+		_request_destroy_outpost_module_rpc.rpc_id(1, index, slot_index)
+
+
+@rpc("any_peer", "reliable")
+func _request_destroy_outpost_module_rpc(index: int, slot_index: int) -> void:
+	if not multiplayer.is_server():
+		return
+	destroy_outpost_module(index, slot_index)
+
+
+func _outposts_equal(a: Array, b: Array) -> bool:
+	if a.size() != b.size():
+		return false
+	for i in a.size():
+		var oa: Dictionary = a[i]
+		var ob: Dictionary = b[i]
+		if oa.get("built") != ob.get("built") or oa.get("hp") != ob.get("hp") \
+				or not _slots_equal(oa.get("slots", []), ob.get("slots", [])):
+			return false
+	return true
 
 
 ## Clears a built EMERGENCY_SHIELD/EMP slot back to EMPTY and returns which
@@ -765,9 +910,7 @@ func reset(mutator: int = Mutators.Mutator.NONE) -> void:
 	total_damage_dealt = 0.0
 	station_invuln_timer = 0.0
 	arena_tier = 0
-	outpost_built = false
-	outpost_hp = 0.0
-	outpost_max_hp = OUTPOST_MAX_HP
+	_init_outposts()
 	_match_start_msec = Time.get_ticks_msec()
 	_init_slots()
 	set_phase(Phase.BUILD)

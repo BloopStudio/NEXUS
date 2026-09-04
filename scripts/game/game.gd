@@ -20,7 +20,10 @@ var _last_station_hp: float = -1.0
 
 
 func _ready() -> void:
-	# Camera centered on origin
+	# Camera starts centered on the station, then follows the local player
+	# every frame (see _update_camera_follow) — previously fixed at origin,
+	# so anything outside the default viewport (the Outpost, an expanded
+	# arena's far edge) was simply never visible no matter where you walked.
 	_camera = Camera2D.new()
 	_camera.position = Vector2.ZERO
 	add_child(_camera)
@@ -45,12 +48,15 @@ func _ready() -> void:
 	add_child(_station)
 	_station.slot_clicked.connect(upgrade_menu.on_slot_clicked)
 
-	# Outpost — second defensible point ("stations multiples"), hidden by
-	# its own is-it-built check until the team builds one.
+	# Outposts — secondary defense points ("stations multiples"), each
+	# hidden by its own is-it-built check until the team builds it.
 	var outpost_script = load("res://scripts/game/outpost.gd")
-	var outpost: Node2D = outpost_script.new()
-	outpost.name = "Outpost"
-	add_child(outpost)
+	for i in GameState.MAX_OUTPOSTS:
+		var outpost: Node2D = outpost_script.new()
+		outpost.name = "Outpost_%d" % i
+		outpost.outpost_index = i
+		add_child(outpost)
+		outpost.slot_clicked.connect(upgrade_menu.on_outpost_slot_clicked)
 
 	# Idle generator (child node, host-only logic inside)
 	var idle_script = load("res://scripts/game/idle_generator.gd")
@@ -92,6 +98,8 @@ func _ready() -> void:
 	# Connect game_over signal
 	GameState.game_over.connect(_on_game_over)
 	GameState.arena_expanded.connect(func(): queue_redraw())
+	GameState.arena_expanded.connect(_update_camera_zoom)
+	_update_camera_zoom()
 
 	_last_station_hp = GameState.station_hp
 	GameState.station_health_changed.connect(_on_station_hp_changed)
@@ -114,7 +122,30 @@ func _process(delta: float) -> void:
 			# Fade out in last 0.5 s
 			_notice_label.modulate.a = clampf(_notice_timer / 0.5, 0.0, 1.0)
 
+	_update_camera_follow(delta)
 	_update_camera_shake(delta)
+
+
+const CAMERA_FOLLOW_SPEED := 4.0
+
+## Keeps the local player roughly centered instead of a fixed view locked
+## on the station — without this, the Outpost (and most of an expanded
+## arena) sat entirely outside the visible viewport no matter where anyone
+## walked.
+func _update_camera_follow(delta: float) -> void:
+	var local_player := get_local_player()
+	if local_player == null:
+		return
+	_camera.global_position = _camera.global_position.lerp(
+		local_player.global_position, clampf(delta * CAMERA_FOLLOW_SPEED, 0.0, 1.0))
+
+
+## Zooms out a bit as the arena grows, so an expanded map doesn't just move
+## more of itself outside the same fixed-size window. Camera2D.zoom > 1
+## shows MORE of the world (each screen pixel covers more world space).
+func _update_camera_zoom() -> void:
+	var z: float = clampf(1.0 + 0.15 * float(GameState.arena_tier), 1.0, 1.6)
+	_camera.zoom = Vector2(z, z)
 
 
 func _on_station_hp_changed(new_hp: float) -> void:

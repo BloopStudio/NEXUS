@@ -80,7 +80,7 @@ var _skill_tree_btn: Button = null
 var _skill_tree_panel: PanelContainer = null
 var _slot_unlock_btn: Button = null
 var _arena_expand_btn: Button = null
-var _outpost_build_btn: Button = null
+var _outpost_build_btns: Array[Button] = []
 # branch (GameState.SkillBranch) -> Array[Button], one per tier (3 each)
 var _skill_tier_buttons: Dictionary = {}
 
@@ -88,6 +88,11 @@ var _panel: PanelContainer = null
 var _panel_title: Label    = null
 var _panel_body: VBoxContainer = null
 var _selected_slot: int    = -1
+## -1 = the main station's module_slots; otherwise which GameState.outposts
+## index the current selection belongs to. Reuses the exact same panel/
+## build/upgrade/destroy flow as the main station rather than a whole
+## separate UI — see _current_slots() and friends below.
+var _selected_outpost: int = -1
 
 # Build mode: one button per buildable type, kept alive across affordability
 # refreshes so a passive energy tick never interrupts an in-progress click.
@@ -106,6 +111,7 @@ func _ready() -> void:
 	GameState.skill_tree_changed.connect(_on_skill_tree_changed)
 	GameState.arena_expanded.connect(_refresh_skill_tree_panel)
 	GameState.outpost_changed.connect(_refresh_skill_tree_panel)
+	GameState.outpost_changed.connect(_on_outpost_changed)
 	_update_visibility()
 
 
@@ -191,10 +197,22 @@ func _build_ui() -> void:
 func on_slot_clicked(idx: int) -> void:
 	if GameState.phase != GameState.Phase.BUILD and GameState.phase != GameState.Phase.UPGRADE:
 		return
-	if idx == _selected_slot:
+	if idx == _selected_slot and _selected_outpost == -1:
 		_deselect()
 	else:
+		_selected_outpost = -1
 		_select(idx)
+
+
+## Connected externally by game.gd, one per Outpost instance.
+func on_outpost_slot_clicked(outpost_index: int, slot_index: int) -> void:
+	if GameState.phase != GameState.Phase.BUILD and GameState.phase != GameState.Phase.UPGRADE:
+		return
+	if slot_index == _selected_slot and outpost_index == _selected_outpost:
+		_deselect()
+	else:
+		_selected_outpost = outpost_index
+		_select(slot_index)
 
 
 func _select(idx: int) -> void:
@@ -206,8 +224,42 @@ func _select(idx: int) -> void:
 
 func _deselect() -> void:
 	_selected_slot = -1
+	_selected_outpost = -1
 	_panel.visible = false
 	_hint_label.visible = (GameState.phase == GameState.Phase.BUILD)
+
+
+# ─── Outpost-vs-main-station indirection ───────────────────────────────────
+## Which slots array the current selection reads/writes.
+func _current_slots() -> Array:
+	if _selected_outpost >= 0:
+		return GameState.outposts[_selected_outpost]["slots"]
+	return GameState.module_slots
+
+
+## Outposts skip the charge modules (Bouclier d'urgence/Bombe EMP) — keeps
+## their build menu simpler and avoids needing outpost-specific charge-
+## trigger click handling.
+func _current_buildable_types() -> Array:
+	if _selected_outpost >= 0:
+		return BUILDABLE_TYPES.filter(func(t): return t not in CHARGE_TYPES)
+	return BUILDABLE_TYPES
+
+
+func _current_upgrade_cost() -> float:
+	if _selected_outpost >= 0:
+		return GameState.get_outpost_module_upgrade_cost(_selected_outpost, _selected_slot)
+	return GameState.get_module_upgrade_cost(_selected_slot)
+
+
+## Synergies only exist on the main station's ring — an outpost's slots
+## aren't adjacent to anything to synergize with.
+func _current_synergy_note(slot_index: int, mtype: int = -1) -> String:
+	if _selected_outpost >= 0:
+		return ""
+	if mtype == -1:
+		return GameState.get_synergy_note(slot_index)
+	return GameState.get_synergy_note_for_type(slot_index, mtype)
 
 
 # ─── Panel contents ─────────────────────────────────────────────────────────────
@@ -225,22 +277,23 @@ func _rebuild_panel_contents() -> void:
 	_upgrade_button = null
 	_upgrade_label = null
 
-	var slot: Dictionary = GameState.module_slots[_selected_slot]
+	var slot: Dictionary = _current_slots()[_selected_slot]
 	var mtype: int = slot.get("type", 0)
+	var location_label := "Avant-poste %d" % (_selected_outpost + 1) if _selected_outpost >= 0 else "Emplacement"
 
 	if mtype == GameState.ModuleType.EMPTY:
-		_panel_title.text = "Emplacement %d — Construire" % (_selected_slot + 1)
+		_panel_title.text = "%s — Construire" % location_label
 
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 8)
 		_panel_body.add_child(row)
 
-		for t in BUILDABLE_TYPES:
+		for t in _current_buildable_types():
 			var captured_t: GameState.ModuleType = t
 			var b := Button.new()
 			b.custom_minimum_size = Vector2(96, 56)
 			b.add_theme_font_size_override("font_size", 12)
-			b.tooltip_text = "%s : %s%s" % [ModuleInfo.NAMES[t], get_module_effect_text(t, 1), GameState.get_synergy_note_for_type(_selected_slot, t)]
+			b.tooltip_text = "%s : %s%s" % [ModuleInfo.NAMES[t], get_module_effect_text(t, 1), _current_synergy_note(_selected_slot, t)]
 			b.pressed.connect(func(): _build(captured_t))
 			row.add_child(b)
 			_build_buttons.append(b)
@@ -251,11 +304,11 @@ func _rebuild_panel_contents() -> void:
 		hint.add_theme_color_override("font_color", C_DIM)
 		_panel_body.add_child(hint)
 	else:
-		_panel_title.text = "Emplacement %d — %s" % [_selected_slot + 1, ModuleInfo.NAMES[mtype]]
+		_panel_title.text = "%s — %s" % [location_label, ModuleInfo.NAMES[mtype]]
 		var level: int = slot.get("level", 0)
 
 		var current_effect := Label.new()
-		current_effect.text = "Actuellement : %s%s" % [get_module_effect_text(mtype, level), GameState.get_synergy_note(_selected_slot)]
+		current_effect.text = "Actuellement : %s%s" % [get_module_effect_text(mtype, level), _current_synergy_note(_selected_slot)]
 		current_effect.add_theme_font_size_override("font_size", 12)
 		current_effect.add_theme_color_override("font_color", C_DIM)
 		_panel_body.add_child(current_effect)
@@ -304,12 +357,13 @@ func _rebuild_panel_contents() -> void:
 func _refresh_affordability() -> void:
 	if _selected_slot < 0 or not _panel.visible:
 		return
-	var slot: Dictionary = GameState.module_slots[_selected_slot]
+	var slot: Dictionary = _current_slots()[_selected_slot]
 	var mtype: int = slot.get("type", 0)
+	var buildable := _current_buildable_types()
 
 	if mtype == GameState.ModuleType.EMPTY:
 		for i in _build_buttons.size():
-			var t: GameState.ModuleType = BUILDABLE_TYPES[i]
+			var t: GameState.ModuleType = buildable[i]
 			var cost: float = GameState.get_module_build_cost(t)
 			var can: bool   = GameState.can_afford(cost)
 			var b := _build_buttons[i]
@@ -318,9 +372,9 @@ func _refresh_affordability() -> void:
 			b.modulate = C_WHITE if can else C_DISABLED
 	elif _upgrade_button != null:
 		var level: int = slot.get("level", 0)
-		var cost: float = GameState.get_module_upgrade_cost(_selected_slot)
+		var cost: float = _current_upgrade_cost()
 		var can: bool   = GameState.can_afford(cost)
-		_upgrade_label.text = "Niveau %d → %d : %s%s" % [level, level + 1, get_module_effect_text(mtype, level + 1), GameState.get_synergy_note(_selected_slot)]
+		_upgrade_label.text = "Niveau %d → %d : %s%s" % [level, level + 1, get_module_effect_text(mtype, level + 1), _current_synergy_note(_selected_slot)]
 		_upgrade_button.text = "Améliorer — %d ⚡" % int(cost)
 		_upgrade_button.disabled = not can
 		_upgrade_button.modulate = C_WHITE if can else C_DISABLED
@@ -330,24 +384,33 @@ func _build(mtype: GameState.ModuleType) -> void:
 	if _selected_slot < 0:
 		return
 	AudioManager.play_sfx(AudioManager.SFX.BUILD)
-	GameState.request_build_module(_selected_slot, mtype)
-	# The panel refreshes itself via _on_module_slots_changed once the
-	# change actually lands (instant for the host, one round-trip for a
-	# client) — no need to rebuild here.
+	if _selected_outpost >= 0:
+		GameState.request_build_outpost_module(_selected_outpost, _selected_slot, mtype)
+	else:
+		GameState.request_build_module(_selected_slot, mtype)
+	# The panel refreshes itself via _on_module_slots_changed/outpost_changed
+	# once the change actually lands (instant for the host, one round-trip
+	# for a client) — no need to rebuild here.
 
 
 func _upgrade() -> void:
 	if _selected_slot < 0:
 		return
 	AudioManager.play_sfx(AudioManager.SFX.UPGRADE)
-	GameState.request_upgrade_module(_selected_slot)
+	if _selected_outpost >= 0:
+		GameState.request_upgrade_outpost_module(_selected_outpost, _selected_slot)
+	else:
+		GameState.request_upgrade_module(_selected_slot)
 
 
 func _destroy() -> void:
 	if _selected_slot < 0:
 		return
 	AudioManager.play_sfx(AudioManager.SFX.UI_CLICK)
-	GameState.request_destroy_module(_selected_slot)
+	if _selected_outpost >= 0:
+		GameState.request_destroy_outpost_module(_selected_outpost, _selected_slot)
+	else:
+		GameState.request_destroy_module(_selected_slot)
 	_deselect()
 
 
@@ -368,9 +431,18 @@ func _on_energy_changed(_val: float) -> void:
 ## it over the network, or a full snapshot just landed (-1 = refresh all).
 ## Keep the panel in sync if it's showing the affected slot.
 func _on_module_slots_changed(slot_index: int) -> void:
-	if _panel.visible and (slot_index == _selected_slot or slot_index == -1):
+	if _panel.visible and _selected_outpost == -1 and (slot_index == _selected_slot or slot_index == -1):
 		_rebuild_panel_contents()
 	_refresh_skill_tree_panel()
+
+
+## An outpost's build/HP state changed — keep the panel in sync if it's
+## currently showing a slot on that outpost (outpost_changed doesn't carry
+## which one, so just always rebuild when the selection is on an outpost —
+## this signal is nowhere near as frequent as module_slots_changed).
+func _on_outpost_changed() -> void:
+	if _panel.visible and _selected_outpost >= 0:
+		_rebuild_panel_contents()
 
 
 func _on_skill_tree_changed() -> void:
@@ -455,13 +527,17 @@ func _build_skill_tree_panel() -> void:
 	_arena_expand_btn.pressed.connect(_on_arena_expand_pressed)
 	root_vbox.add_child(_arena_expand_btn)
 
-	# Outpost ("stations multiples") — one-time build, only offered once the
-	# arena has room for it (see GameState.OUTPOST_MIN_ARENA_TIER).
-	_outpost_build_btn = Button.new()
-	_outpost_build_btn.custom_minimum_size = Vector2(0, 40)
-	_outpost_build_btn.add_theme_font_size_override("font_size", 13)
-	_outpost_build_btn.pressed.connect(_on_outpost_build_pressed)
-	root_vbox.add_child(_outpost_build_btn)
+	# Outposts ("stations multiples") — one button per outpost slot, each a
+	# one-time build only offered once the arena has room for it (see
+	# GameState.OUTPOST_MIN_ARENA_TIER).
+	for i in GameState.MAX_OUTPOSTS:
+		var btn := Button.new()
+		btn.custom_minimum_size = Vector2(0, 40)
+		btn.add_theme_font_size_override("font_size", 13)
+		var captured_index: int = i
+		btn.pressed.connect(func(): _on_outpost_build_pressed(captured_index))
+		root_vbox.add_child(btn)
+		_outpost_build_btns.append(btn)
 
 	var branches_row := HBoxContainer.new()
 	branches_row.add_theme_constant_override("separation", 14)
@@ -511,9 +587,9 @@ func _on_arena_expand_pressed() -> void:
 	GameState.request_expand_arena()
 
 
-func _on_outpost_build_pressed() -> void:
+func _on_outpost_build_pressed(index: int) -> void:
 	AudioManager.play_sfx(AudioManager.SFX.BUILD)
-	GameState.request_build_outpost()
+	GameState.request_build_outpost(index)
 
 
 func _on_skill_tier_pressed(branch: GameState.SkillBranch, tier_index: int) -> void:
@@ -550,17 +626,20 @@ func _refresh_skill_tree_panel() -> void:
 			GameState.arena_tier, GameState.MAX_ARENA_TIER, int(arena_cost)]
 		_arena_expand_btn.disabled = not can_arena
 
-	# Outpost row
-	if GameState.outpost_built:
-		_outpost_build_btn.text = "🏳 Avant-poste déjà construit"
-		_outpost_build_btn.disabled = true
-	elif GameState.arena_tier < GameState.OUTPOST_MIN_ARENA_TIER:
-		_outpost_build_btn.text = "🏳 Avant-poste (agrandir la carte d'abord)"
-		_outpost_build_btn.disabled = true
-	else:
-		var can_outpost := GameState.can_afford(GameState.OUTPOST_BUILD_COST)
-		_outpost_build_btn.text = "🏳 Construire l'avant-poste — %d ⚡" % int(GameState.OUTPOST_BUILD_COST)
-		_outpost_build_btn.disabled = not can_outpost
+	# Outpost rows — one per outpost slot
+	for i in _outpost_build_btns.size():
+		var btn := _outpost_build_btns[i]
+		var min_tier: int = GameState.OUTPOST_MIN_ARENA_TIER[i] if i < GameState.OUTPOST_MIN_ARENA_TIER.size() else 1
+		if i < GameState.outposts.size() and GameState.outposts[i]["built"]:
+			btn.text = "🏳 Avant-poste %d déjà construit" % (i + 1)
+			btn.disabled = true
+		elif GameState.arena_tier < min_tier:
+			btn.text = "🏳 Avant-poste %d (agrandir la carte au palier %d)" % [i + 1, min_tier]
+			btn.disabled = true
+		else:
+			var can_outpost := GameState.can_afford(GameState.OUTPOST_BUILD_COST)
+			btn.text = "🏳 Construire l'avant-poste %d — %d ⚡" % [i + 1, int(GameState.OUTPOST_BUILD_COST)]
+			btn.disabled = not can_outpost
 
 	# Branch tier buttons
 	for branch in _skill_tier_buttons:

@@ -192,19 +192,27 @@ func _spawn_next() -> void:
 
 	var id := _next_enemy_id
 	_next_enemy_id += 1
-	var targets_outpost := _roll_targets_outpost(type)
-	_spawn_enemy_rpc.rpc(id, type, spawn_pos, _compute_target_for(type, targets_outpost), targets_outpost)
+	var target_outpost_index := _roll_target_outpost(type)
+	_spawn_enemy_rpc.rpc(id, type, spawn_pos, _compute_target_for(type, target_outpost_index), target_outpost_index)
 	_active_enemies += 1
 
 
 ## The Saboteur ignores this entirely (its own module targeting always
-## wins) — for everything else, once the team has built the Outpost, some
-## enemies peel off to hit it instead of the main station, rewarding
-## players who don't just abandon it once it's up.
+## wins) — for everything else, once the team has built at least one
+## Outpost, some enemies peel off to hit a (random, currently-built) one
+## instead of the main station, rewarding players who don't just abandon it.
 const OUTPOST_TARGET_CHANCE := 0.35
 
-func _roll_targets_outpost(type: String) -> bool:
-	return type != "saboteur" and GameState.outpost_built and randf() < OUTPOST_TARGET_CHANCE
+func _roll_target_outpost(type: String) -> int:
+	if type == "saboteur":
+		return -1
+	var candidates: Array[int] = []
+	for i in GameState.outposts.size():
+		if GameState.outposts[i]["built"]:
+			candidates.append(i)
+	if candidates.is_empty() or randf() >= OUTPOST_TARGET_CHANCE:
+		return -1
+	return candidates[randi() % candidates.size()]
 
 
 ## Every enemy type targets the station core except the Saboteur, which picks
@@ -212,7 +220,7 @@ func _roll_targets_outpost(type: String) -> bool:
 ## host, and sent through the spawn RPC so every peer's copy agrees on it
 ## (a client independently rerolling its own random slot would only affect
 ## cosmetics like facing angle, but there's no reason to let it drift).
-func _compute_target_for(type: String, targets_outpost: bool) -> Vector2:
+func _compute_target_for(type: String, target_outpost_index: int) -> Vector2:
 	if station_node == null:
 		return Vector2.ZERO
 	if type == "saboteur":
@@ -223,8 +231,8 @@ func _compute_target_for(type: String, targets_outpost: bool) -> Vector2:
 		if not candidates.is_empty():
 			return station_node.get_slot_world_pos(candidates[randi() % candidates.size()])
 		return station_node.global_position
-	if targets_outpost:
-		return station_node.global_position + GameState.OUTPOST_OFFSET
+	if target_outpost_index >= 0:
+		return station_node.global_position + GameState.get_outpost_offset(target_outpost_index)
 	return station_node.global_position
 
 
@@ -232,7 +240,7 @@ func _compute_target_for(type: String, targets_outpost: bool) -> Vector2:
 ## everyone sees the same wave — only the host actually simulates movement
 ## and combat (gated inside enemy_base.gd), everyone else just displays it.
 @rpc("authority", "call_local", "reliable")
-func _spawn_enemy_rpc(id: int, type: String, spawn_pos: Vector2, target_pos: Vector2, targets_outpost: bool = false) -> void:
+func _spawn_enemy_rpc(id: int, type: String, spawn_pos: Vector2, target_pos: Vector2, target_outpost_index: int = -1) -> void:
 	if station_node == null:
 		return
 	var enemy: Node2D
@@ -252,7 +260,7 @@ func _spawn_enemy_rpc(id: int, type: String, spawn_pos: Vector2, target_pos: Vec
 	enemy.enemy_id = id
 	enemy.global_position = spawn_pos
 	enemy.init(target_pos)
-	enemy.targets_outpost = targets_outpost and type != "saboteur"
+	enemy.target_outpost_index = target_outpost_index if type != "saboteur" else -1
 	enemy.add_to_group("enemies")
 	_enemy_registry[id] = enemy
 
@@ -371,6 +379,6 @@ func _spawn_split_children(type: String, count: int, at_pos: Vector2) -> void:
 		var offset := Vector2(cos(TAU * i / count), sin(TAU * i / count)) * 24.0
 		var id := _next_enemy_id
 		_next_enemy_id += 1
-		var targets_outpost := _roll_targets_outpost(type)
-		_spawn_enemy_rpc.rpc(id, type, at_pos + offset, _compute_target_for(type, targets_outpost), targets_outpost)
+		var target_outpost_index := _roll_target_outpost(type)
+		_spawn_enemy_rpc.rpc(id, type, at_pos + offset, _compute_target_for(type, target_outpost_index), target_outpost_index)
 		_active_enemies += 1

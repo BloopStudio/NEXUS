@@ -19,11 +19,11 @@ var _hit_flash := 0.0  # seconds remaining for red flash
 ## puppet copy of this enemy in sync (position/hp ticks, and removal on death).
 var enemy_id: int = -1
 
-## Set by WaveManager at spawn time — true if this enemy's `_target` is the
-## Outpost rather than the main station, so _on_reach_station() damages the
-## right one. The Saboteur ignores this (it always overrides _target to a
-## module slot instead).
-var targets_outpost: bool = false
+## Set by WaveManager at spawn time — which GameState.outposts index this
+## enemy's `_target` actually points at, or -1 for the main station, so
+## _on_reach_station() damages the right one. The Saboteur ignores this (it
+## always overrides _target to a module slot instead).
+var target_outpost_index: int = -1
 
 ## Facing angle (radians) toward the station — applied only to the shape
 ## drawing, not to the whole node's transform, so the HP bar above it stays
@@ -208,8 +208,9 @@ func _on_damage_blocked() -> void:
 func _on_reach_station() -> void:
 	if not NetworkManager.is_host():
 		return
-	if targets_outpost and GameState.outpost_built:
-		GameState.damage_outpost(contact_damage * _buff_damage_mult)
+	if target_outpost_index >= 0 and target_outpost_index < GameState.outposts.size() \
+			and GameState.outposts[target_outpost_index]["built"]:
+		GameState.damage_outpost(target_outpost_index, contact_damage * _buff_damage_mult)
 	else:
 		GameState.damage_station(contact_damage * _buff_damage_mult)
 	AudioManager.play_sfx(AudioManager.SFX.STATION_DAMAGE)

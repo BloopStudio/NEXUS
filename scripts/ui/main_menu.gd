@@ -215,6 +215,10 @@ func _build_ui() -> void:
 	btn_scores.pressed.connect(_on_scores_pressed)
 	center.add_child(btn_scores)
 
+	var btn_quit := _make_button("✕  Quitter le jeu")
+	btn_quit.pressed.connect(_on_quit_pressed)
+	center.add_child(btn_quit)
+
 	_spacer(center, 8)
 
 	# ── Leaderboard panel (hidden until opened) ──
@@ -387,6 +391,11 @@ func _on_code_display_pressed() -> void:
 	DisplayServer.clipboard_set(_code_display.text)
 	AudioManager.play_sfx(AudioManager.SFX.UI_CLICK)
 	_set_status("Code copié dans le presse-papiers !", C_SUCCESS)
+
+
+func _on_quit_pressed() -> void:
+	AudioManager.play_sfx(AudioManager.SFX.UI_CLICK)
+	get_tree().quit()
 
 
 func _on_scores_pressed() -> void:

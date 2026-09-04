@@ -137,18 +137,24 @@ Entre chaque vague : phase de construction pour améliorer la station.
 | Élite (dès la vague 7) | Hexagone doré à pointes | Buffe (vitesse + dégâts) tous les ennemis dans son aura — à cibler en priorité pour couper le buff |
 | Aberration (dès la vague 15) | Silhouette violette irrégulière | Se rend invulnérable en alternance (~1s toutes les 3s) — première d'une seconde faction, oblige à rythmer les tirs |
 
-### Carte et avant-poste
+### Carte et avant-postes
 Depuis le panneau 🌳 Arbre de compétences, deux nouvelles options en plus
 des emplacements et des paliers :
 - 🗺 **Agrandir la carte** : repousse la limite jouable par paliers (3 max)
   — plus d'espace pour se déplacer, et les ennemis apparaissent
   proportionnellement plus loin. La limite actuelle est visible comme un
-  cercle sur le terrain.
-- 🏳 **Avant-poste** : une fois la carte agrandie au moins une fois,
-  construit un second point à défendre (sa propre barre de vie, pas
-  d'emplacements de modules). Le perdre ne termine pas la partie, mais une
-  partie des ennemis le prennent pour cible tant qu'il tient — l'abandonner
-  n'est pas gratuit.
+  cercle sur le terrain. La caméra suit le joueur et se dézoome
+  progressivement à mesure que la carte s'agrandit, pour garder le terrain
+  visible.
+- 🏳 **Avant-postes** : jusqu'à 2 avant-postes constructibles (le second
+  demandant un agrandissement de carte supplémentaire), chacun avec sa
+  propre barre de vie et 4 vrais emplacements de modules (mêmes types que
+  la station principale, hors modules à charge unique). Ils sont placés
+  loin de la station, dans des directions opposées, et de plus en plus
+  loin à mesure que la carte s'agrandit. Les perdre ne termine pas la
+  partie, mais une partie des ennemis les prennent pour cible tant qu'ils
+  tiennent — les abandonner n'est pas gratuit, et les négliger prive
+  d'emplacements de modules utiles.
 
 ### Modificateurs de partie
 Avant d'héberger, un menu déroulant "Modificateur" laisse choisir un
