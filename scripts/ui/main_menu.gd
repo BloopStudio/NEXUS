@@ -28,6 +28,8 @@ var _update_btn: Button
 var _update_url: String = ""
 var _scores_panel: PanelContainer
 var _scores_list: VBoxContainer
+var _lobby_panel: PanelContainer
+var _lobby_list: VBoxContainer
 
 # GitHub Releases API — no auth needed for a public repo's latest release.
 const UPDATE_CHECK_URL := "https://api.github.com/repos/BloopStudio/NEXUS/releases/latest"
@@ -40,6 +42,9 @@ func _ready() -> void:
 	NetworkManager.stun_status.connect(_on_stun_status)
 	NetworkManager.game_starting.connect(_on_game_starting)
 	NetworkManager.joining_candidate.connect(_on_joining_candidate)
+	NetworkManager.player_connected.connect(_on_lobby_players_changed)
+	NetworkManager.player_disconnected.connect(_on_lobby_players_changed)
+	NetworkManager.players_updated.connect(_on_lobby_players_changed)
 	_check_for_update()
 
 
@@ -234,7 +239,6 @@ func _build_ui() -> void:
 	_code_display = Button.new()
 	_code_display.flat = true
 	_code_display.clip_text = false
-	_code_display.autowrap_mode = TextServer.AUTOWRAP_WORD
 	_code_display.custom_minimum_size = Vector2(0, 40)
 	_code_display.add_theme_font_size_override("font_size", 18)
 	_code_display.add_theme_color_override("font_color", C_ACCENT)
@@ -272,6 +276,24 @@ func _build_ui() -> void:
 	btn_connect.pressed.connect(_on_connect_pressed)
 	join_vbox.add_child(btn_connect)
 
+	# ── Lobby player list — shared by both the host (right after hosting)
+	# and a joiner (right after connecting), so everyone sees who's already
+	# in the party before the match actually starts, not just once in-game.
+	_lobby_panel = PanelContainer.new()
+	_lobby_panel.visible = false
+	center.add_child(_lobby_panel)
+	var lobby_vbox := VBoxContainer.new()
+	lobby_vbox.add_theme_constant_override("separation", 4)
+	_lobby_panel.add_child(lobby_vbox)
+	var lobby_lbl := Label.new()
+	lobby_lbl.text = "Joueurs dans la partie :"
+	lobby_lbl.add_theme_color_override("font_color", C_DIM)
+	lobby_lbl.add_theme_font_size_override("font_size", 13)
+	lobby_vbox.add_child(lobby_lbl)
+	_lobby_list = VBoxContainer.new()
+	_lobby_list.add_theme_constant_override("separation", 3)
+	lobby_vbox.add_child(_lobby_list)
+
 	# ── Status label ──
 	_status_label = Label.new()
 	_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -307,6 +329,8 @@ func _on_host_pressed() -> void:
 	_code_display.text = code
 	_party_code_panel.visible = true
 	_join_panel.visible = false
+	_lobby_panel.visible = true
+	_refresh_lobby_list()
 	_set_status("Ouverture automatique du port…", C_DIM)
 
 
@@ -430,6 +454,8 @@ func _on_connect_pressed() -> void:
 
 func _on_connection_succeeded() -> void:
 	_set_status("Connecté ! En attente du démarrage…", C_SUCCESS)
+	_lobby_panel.visible = true
+	_refresh_lobby_list()
 
 
 ## The joiner tries each address the party code carries (UPnP-mapped, STUN-
@@ -514,6 +540,36 @@ func _apply_player_name() -> void:
 ## Suggests (doesn't force) the newly picked class's default spell on slot E
 ## — the two spell dropdowns stay fully independent, the player can still
 ## change it right after.
+## Rebuilds the lobby's live player list — connected to player_connected/
+## player_disconnected/players_updated, so it stays current whether someone
+## just joined, left, or merely had a detail (ping, name) refresh, for both
+## the host (right after hosting) and a joiner (right after connecting).
+func _on_lobby_players_changed(_arg = null) -> void:
+	_refresh_lobby_list()
+
+
+func _refresh_lobby_list() -> void:
+	for child in _lobby_list.get_children():
+		child.queue_free()
+	var local_id := -1
+	if multiplayer.multiplayer_peer != null:
+		local_id = multiplayer.get_unique_id()
+	var ids: Array = NetworkManager.players.keys()
+	ids.sort()
+	for peer_id in ids:
+		var info: Dictionary = NetworkManager.players[peer_id]
+		var row := Label.new()
+		var tags := ""
+		if peer_id == 1:
+			tags += " 👑"
+		if peer_id == local_id:
+			tags += " (toi)"
+		row.text = "●  %s%s" % [info.get("name", "Joueur"), tags]
+		row.add_theme_font_size_override("font_size", 14)
+		row.add_theme_color_override("font_color", info.get("color", C_TEXT))
+		_lobby_list.add_child(row)
+
+
 func _get_selected_mutator() -> int:
 	return _mutator_dropdown.get_item_metadata(_mutator_dropdown.selected)
 
