@@ -78,6 +78,26 @@ func _process(delta: float) -> void:
 	_update_mines(delta)
 	_update_flashes(delta)
 	_update_mine_pulses(delta)
+	# The disabled-slot ring and synergy-link glow both animate via
+	# Time.get_ticks_msec() inside _draw(), but nothing else redraws every
+	# frame — without this they'd sit frozen on whatever phase happened to
+	# be showing at the last state-triggered redraw instead of actually
+	# pulsing. Only pay for a continuous redraw while there's something to
+	# animate, not on every station in every match.
+	if _has_animated_visuals():
+		queue_redraw()
+
+
+func _has_animated_visuals() -> bool:
+	var n := _slot_count()
+	for i in n:
+		if GameState.module_slots[i].get("disabled", false):
+			return true
+	for i in n:
+		var next_i := (i + 1) % n
+		if _synergy_link_color(GameState.module_slots[i]["type"], GameState.module_slots[next_i]["type"]) != null:
+			return true
+	return false
 
 
 func _update_flashes(delta: float) -> void:
