@@ -438,10 +438,36 @@ func _teardown_stun() -> void:
 @rpc("any_peer", "reliable")
 func register_player(info: Dictionary) -> void:
 	var sender := multiplayer.get_remote_sender_id()
-	players[sender] = info
+	players[sender] = _sanitize_player_info(info)
 	player_connected.emit(sender)
 	# Notify the new peer about all existing players
 	_send_player_list.rpc_id(sender, players)
+
+
+## A modified/malicious client could send a garbage class id, an unknown
+## spell id, or a wrongly-typed name/color at registration — a legit client
+## never can (the main menu's dropdowns only ever offer valid values), but
+## nothing stops a hand-crafted RPC call from skipping that UI entirely.
+## Left unchecked, that data gets stored and synced to every peer, and the
+## first time anything indexes PlayerClasses.DEFS[class_id] or
+## Spells.DEFS[spell_id] with it (damage calcs, spell casts, the HUD) it
+## crashes that lookup on EVERY peer, not just the sender's. Clamp
+## everything to known-safe values before it's ever stored.
+func _sanitize_player_info(info: Dictionary) -> Dictionary:
+	var player_name: String = str(info.get("name", "Player")).left(24)
+	if player_name.is_empty():
+		player_name = "Player"
+	var color_val = info.get("color", Color.CYAN)
+	var color: Color = color_val if color_val is Color else Color.CYAN
+	var class_id = info.get("class", PlayerClasses.DEFAULT_CLASS)
+	if not (class_id is int and PlayerClasses.DEFS.has(class_id)):
+		class_id = PlayerClasses.DEFAULT_CLASS
+	var spells_val = info.get("spells", [])
+	var safe_spells: Array = []
+	if spells_val is Array and spells_val.size() == 2 \
+			and Spells.DEFS.has(spells_val[0]) and Spells.DEFS.has(spells_val[1]):
+		safe_spells = spells_val
+	return {"name": player_name, "color": color, "class": class_id, "spells": safe_spells}
 
 
 ## Host → client(s): here's the full player list. Sent to just the joining
@@ -453,8 +479,12 @@ func _send_player_list(list: Dictionary) -> void:
 	players_updated.emit()
 
 
-## Broadcast: a player disconnected, remove from list
-@rpc("any_peer", "call_local", "reliable")
+## Host → everyone: a player disconnected, remove from list. Only the host
+## ever legitimately detects another peer's disconnect in this star
+## topology (a client only sees its own connection to the host drop) —
+## "authority" (not "any_peer") means a malicious client can't spoof this
+## to get an arbitrary real player removed/kicked from everyone's game.
+@rpc("authority", "call_local", "reliable")
 func _remove_player(peer_id: int) -> void:
 	players.erase(peer_id)
 	player_disconnected.emit(peer_id)

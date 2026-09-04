@@ -138,8 +138,7 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_pressed("shoot") and _shoot_timer <= 0.0:
 		_shoot_timer = SHOOT_COOLDOWN
 		var target := get_global_mouse_position()
-		var dmg: float = BULLET_DAMAGE * GameState.get_player_damage_multiplier() * PlayerClasses.DEFS[player_class]["damage_mult"]
-		_shoot_rpc.rpc(target, dmg)
+		_shoot_rpc.rpc(target)
 
 	# Spell slots: "ability" (default E) and "ability_2" (default A)
 	if Input.is_action_just_pressed("ability"):
@@ -193,9 +192,22 @@ func _level_up_spell(slot: int) -> void:
 	_sync_spell_level_rpc.rpc(slot, level + 1)
 
 
+## True if `sender_id` is allowed to drive THIS player's own node: either
+## its own owning peer, or a local (non-networked) call — Godot reports
+## sender 0 for a call_local invocation triggered by the node's own peer.
+## Any OTHER peer calling one of this node's "any_peer" RPCs is spoofing a
+## different player and must be rejected — without this, any connected
+## client could fake another player's movement, spell casts, bullet
+## damage, or instant revives.
+func _is_own_action(sender_id: int) -> bool:
+	return sender_id == 0 or sender_id == peer_id
+
+
 @rpc("any_peer", "reliable")
 func _request_level_up_rpc(slot: int) -> void:
 	if not NetworkManager.is_host():
+		return
+	if not _is_own_action(multiplayer.get_remote_sender_id()):
 		return
 	_level_up_spell(slot)
 
@@ -209,6 +221,8 @@ func _sync_spell_level_rpc(slot: int, level: int) -> void:
 
 @rpc("any_peer", "call_local", "unreliable")
 func _move_rpc(pos: Vector2) -> void:
+	if not _is_own_action(multiplayer.get_remote_sender_id()):
+		return
 	global_position = pos
 	queue_redraw()
 
@@ -221,6 +235,10 @@ func _move_rpc(pos: Vector2) -> void:
 ## levels.
 @rpc("any_peer", "call_local", "reliable")
 func _cast_spell_rpc(spell_id: String, level: int) -> void:
+	if not _is_own_action(multiplayer.get_remote_sender_id()):
+		return
+	if not Spells.DEFS.has(spell_id):
+		return
 	var def: Dictionary = Spells.get_scaled_def(spell_id, level)
 	_pulse_color = def["color"]
 	_pulse_radius = def.get("radius", 60.0)
@@ -298,22 +316,37 @@ func _sync_hp_rpc(new_hp: float, downed: bool) -> void:
 func _request_revive_rpc(downed_peer_id: int) -> void:
 	if not NetworkManager.is_host():
 		return
+	# The client only checks proximity/hold-time locally before sending
+	# this — re-validate both here, otherwise any peer could revive anyone
+	# from anywhere with a single spoofed call.
+	if not _is_own_action(multiplayer.get_remote_sender_id()):
+		return
+	if is_downed:
+		return
 	var game := get_parent()
 	if game == null or not game.has_method("get_player_by_peer"):
 		return
 	var downed: Node2D = game.get_player_by_peer(downed_peer_id)
 	if downed == null or not downed.is_downed:
 		return
+	if global_position.distance_to(downed.global_position) > REVIVE_RADIUS:
+		return
 	downed._apply_revive(REVIVE_HP_RATIO)
 
 
+## `damage` is NOT taken from the caller — a client could otherwise fire a
+## bullet with an arbitrary damage value baked in. It's recomputed here from
+## this node's own (host-known) class/skill/module state instead, which
+## every peer already has a consistent copy of.
 @rpc("any_peer", "call_local", "reliable")
-func _shoot_rpc(target_pos: Vector2, damage: float) -> void:
-	# Spawn a bullet
+func _shoot_rpc(target_pos: Vector2) -> void:
+	if not _is_own_action(multiplayer.get_remote_sender_id()):
+		return
+	var dmg: float = BULLET_DAMAGE * GameState.get_player_damage_multiplier() * PlayerClasses.DEFS[player_class]["damage_mult"]
 	var bullet := _Bullet.new()
 	bullet.global_position = global_position
 	bullet.direction = (target_pos - global_position).normalized()
-	bullet.damage = damage
+	bullet.damage = dmg
 	get_parent().add_child(bullet)
 	queue_redraw()
 

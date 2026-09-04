@@ -395,6 +395,8 @@ func get_next_skill_cost(branch: SkillBranch) -> float:
 
 
 func unlock_skill(branch: SkillBranch) -> bool:
+	if not SKILL_TREE.has(branch):
+		return false
 	var cost := get_next_skill_cost(branch)
 	if cost < 0.0 or not spend_energy(cost):
 		return false
@@ -491,6 +493,10 @@ func get_module_upgrade_cost(slot_index: int) -> float:
 
 
 func build_module(slot_index: int, type: ModuleType) -> bool:
+	if slot_index < 0 or slot_index >= module_slots.size():
+		return false
+	if not MODULE_COSTS.has(type):
+		return false
 	var cost := get_module_build_cost(type)
 	if not spend_energy(cost):
 		return false
@@ -502,6 +508,8 @@ func build_module(slot_index: int, type: ModuleType) -> bool:
 
 
 func upgrade_module(slot_index: int) -> bool:
+	if slot_index < 0 or slot_index >= module_slots.size():
+		return false
 	var slot := module_slots[slot_index]
 	if slot["type"] == ModuleType.EMPTY or slot["level"] >= 3:
 		return false
@@ -529,6 +537,8 @@ func get_module_total_invested(type: ModuleType, level: int) -> float:
 ## Clears a built module back to EMPTY, refunding DESTROY_REFUND_RATIO of
 ## everything spent building + upgrading it.
 func destroy_module(slot_index: int) -> bool:
+	if slot_index < 0 or slot_index >= module_slots.size():
+		return false
 	var slot: Dictionary = module_slots[slot_index]
 	if slot["type"] == ModuleType.EMPTY:
 		return false
