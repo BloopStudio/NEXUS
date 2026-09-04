@@ -80,25 +80,28 @@ func _build_ui() -> void:
 	# Center column
 	var center := VBoxContainer.new()
 	center.custom_minimum_size = Vector2(520, 0)
-	center.add_theme_constant_override("separation", 18)
+	center.add_theme_constant_override("separation", 12)
 	center_wrap.add_child(center)
 
-	# Title
+	# Title — kept compact (rather than the original 72px) since the menu has
+	# grown a fair bit of content over time (class/mutator/loadout rows, a
+	# lobby list, six buttons) and needs to fit inside shorter windows without
+	# relying on scrolling for the common case.
 	var title := Label.new()
 	title.text = "NEXUS"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 72)
+	title.add_theme_font_size_override("font_size", 48)
 	title.add_theme_color_override("font_color", C_ACCENT)
 	center.add_child(title)
 
 	var sub := Label.new()
 	sub.text = "Defend the station. Together."
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	sub.add_theme_font_size_override("font_size", 16)
+	sub.add_theme_font_size_override("font_size", 14)
 	sub.add_theme_color_override("font_color", C_DIM)
 	center.add_child(sub)
 
-	_spacer(center, 16)
+	_spacer(center, 10)
 
 	# Player name row
 	var name_row := HBoxContainer.new()
@@ -195,31 +198,44 @@ func _build_ui() -> void:
 	_spacer(center, 8)
 
 	# ── Buttons ──
-	var btn_host := _make_button("🛡  Héberger une partie")
+	var btn_host := _make_button("🛡  Héberger une partie", 44)
 	btn_host.pressed.connect(_on_host_pressed)
 	center.add_child(btn_host)
 
-	var btn_join := _make_button("🔗  Rejoindre avec un code")
+	var btn_join := _make_button("🔗  Rejoindre avec un code", 44)
 	btn_join.pressed.connect(_on_join_pressed)
 	center.add_child(btn_join)
 
-	var btn_solo := _make_button("🤖  Solo (test local)")
+	var btn_solo := _make_button("🤖  Solo (test local)", 44)
 	btn_solo.pressed.connect(_on_solo_pressed)
 	center.add_child(btn_solo)
 
-	var btn_settings := _make_button("⚙  Réglages")
+	# Secondary/utility actions share one row instead of stacking full-width —
+	# saves two button-heights' worth of vertical space, which matters once
+	# the window gets short (laptop screens, small windowed mode).
+	var utility_row := HBoxContainer.new()
+	utility_row.add_theme_constant_override("separation", 8)
+	center.add_child(utility_row)
+
+	var btn_settings := _make_button("⚙  Réglages", 40)
+	btn_settings.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn_settings.custom_minimum_size = Vector2(0, 40)
 	btn_settings.pressed.connect(_on_settings_pressed)
-	center.add_child(btn_settings)
+	utility_row.add_child(btn_settings)
 
-	var btn_scores := _make_button("🏆  Classement local")
+	var btn_scores := _make_button("🏆  Classement", 40)
+	btn_scores.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn_scores.custom_minimum_size = Vector2(0, 40)
 	btn_scores.pressed.connect(_on_scores_pressed)
-	center.add_child(btn_scores)
+	utility_row.add_child(btn_scores)
 
-	var btn_quit := _make_button("✕  Quitter le jeu")
+	var btn_quit := _make_button("✕  Quitter", 40)
+	btn_quit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn_quit.custom_minimum_size = Vector2(0, 40)
 	btn_quit.pressed.connect(_on_quit_pressed)
-	center.add_child(btn_quit)
+	utility_row.add_child(btn_quit)
 
-	_spacer(center, 8)
+	_spacer(center, 6)
 
 	# ── Leaderboard panel (hidden until opened) ──
 	_scores_panel = PanelContainer.new()
@@ -621,10 +637,10 @@ func _set_status(text: String, color: Color = C_DIM) -> void:
 	_status_label.add_theme_color_override("font_color", color)
 
 
-func _make_button(text: String) -> Button:
+func _make_button(text: String, height: int = 48) -> Button:
 	var btn := Button.new()
 	btn.text = text
-	btn.custom_minimum_size = Vector2(380, 48)
+	btn.custom_minimum_size = Vector2(380, height)
 	btn.add_theme_font_size_override("font_size", 16)
 	btn.add_theme_color_override("font_color", C_TEXT)
 	btn.pressed.connect(func(): AudioManager.play_sfx(AudioManager.SFX.UI_CLICK))

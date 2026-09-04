@@ -124,8 +124,8 @@ func _build_ui() -> void:
 	_hint_label.anchor_bottom = 1.0
 	_hint_label.offset_left   = -300.0
 	_hint_label.offset_right  =  300.0
-	_hint_label.offset_top    = -60.0
-	_hint_label.offset_bottom = -20.0
+	_hint_label.offset_top    = -140.0
+	_hint_label.offset_bottom = -104.0
 	_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hint_label.text = "Clique sur un emplacement de la station pour construire ou améliorer"
 	_hint_label.add_theme_font_size_override("font_size", 14)
@@ -157,7 +157,9 @@ func _build_ui() -> void:
 	_build_skill_tree_panel()
 
 	# Contextual panel — anchored at the bottom so it never covers the station
-	# ring (which sits centered around the middle of the screen).
+	# ring (which sits centered around the middle of the screen). Stops well
+	# short of the very bottom edge (offset_bottom -104, not -16) so it never
+	# overlaps the HUD's bottom-center spell bar, which occupies that strip.
 	_panel = PanelContainer.new()
 	_panel.visible = false
 	_panel.anchor_left   = 0.5
@@ -166,8 +168,8 @@ func _build_ui() -> void:
 	_panel.anchor_bottom = 1.0
 	_panel.offset_left   = -350.0
 	_panel.offset_right  =  350.0
-	_panel.offset_top    = -190.0
-	_panel.offset_bottom = -16.0
+	_panel.offset_top    = -320.0
+	_panel.offset_bottom = -104.0
 	add_child(_panel)
 
 	var vbox := VBoxContainer.new()
@@ -284,9 +286,15 @@ func _rebuild_panel_contents() -> void:
 	if mtype == GameState.ModuleType.EMPTY:
 		_panel_title.text = "%s — Construire" % location_label
 
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 8)
-		_panel_body.add_child(row)
+		# A GridContainer (4 columns, wrapping to more rows as needed) instead of
+		# a single HBoxContainer — with up to 8 buildable types the old row grew
+		# wider than the panel itself and spilled past the screen edge on
+		# smaller windows.
+		var grid := GridContainer.new()
+		grid.columns = 4
+		grid.add_theme_constant_override("h_separation", 8)
+		grid.add_theme_constant_override("v_separation", 8)
+		_panel_body.add_child(grid)
 
 		for t in _current_buildable_types():
 			var captured_t: GameState.ModuleType = t
@@ -295,7 +303,7 @@ func _rebuild_panel_contents() -> void:
 			b.add_theme_font_size_override("font_size", 12)
 			b.tooltip_text = "%s : %s%s" % [ModuleInfo.NAMES[t], get_module_effect_text(t, 1), _current_synergy_note(_selected_slot, t)]
 			b.pressed.connect(func(): _build(captured_t))
-			row.add_child(b)
+			grid.add_child(b)
 			_build_buttons.append(b)
 
 		var hint := Label.new()
