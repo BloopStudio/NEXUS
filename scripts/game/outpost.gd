@@ -49,6 +49,7 @@ func _ready() -> void:
 	_turret_timers.resize(GameState.OUTPOST_SLOT_COUNT)
 	_mine_timers.resize(GameState.OUTPOST_SLOT_COUNT)
 	GameState.outpost_changed.connect(func(): queue_redraw())
+	I18n.language_changed.connect(func(): queue_redraw())
 	GameState.arena_expanded.connect(func(): position = GameState.get_outpost_offset(outpost_index))
 	set_process(true)
 	set_process_input(true)
@@ -112,6 +113,9 @@ func _draw() -> void:
 	draw_arc(Vector2.ZERO, RING_RADIUS + 4, 0, TAU, 40, C_RING, 2.0)
 	for i in GameState.OUTPOST_SLOT_COUNT:
 		draw_line(Vector2.ZERO, positions[i], C_RING, 1.0)
+		var tick_angle := (i / float(GameState.OUTPOST_SLOT_COUNT)) * TAU - PI / 2.0
+		var tick_dir := Vector2(cos(tick_angle), sin(tick_angle))
+		draw_line(tick_dir * (RING_RADIUS + 4), tick_dir * (RING_RADIUS + 10), C_RING, 1.2)
 
 	var slots := _slots()
 	for i in GameState.OUTPOST_SLOT_COUNT:
@@ -119,9 +123,14 @@ func _draw() -> void:
 		var slot: Dictionary = slots[i]
 		var mtype: int = slot["type"]
 		var col: Color = MODULE_COLORS.get(mtype, C_CORE)
+		if mtype != GameState.ModuleType.EMPTY:
+			draw_circle(pos, SLOT_RADIUS * 1.8, Color(col.r, col.g, col.b, 0.08))
+			draw_circle(pos, SLOT_RADIUS * 1.3, Color(col.r, col.g, col.b, 0.14))
 		if i == _hovered_slot:
 			draw_circle(pos, SLOT_RADIUS + 4, C_SLOT_HOVER)
 		draw_circle(pos, SLOT_RADIUS, col)
+		draw_arc(pos, SLOT_RADIUS, 0, TAU, 20, col.lightened(0.35), 1.2)
+		ModuleInfo.draw_glyph(self, pos, mtype, SLOT_RADIUS)
 		var level: int = slot.get("level", 0)
 		for l in level:
 			var dot_offset := Vector2(cos(PI / 4.0 * l) * 8, sin(PI / 4.0 * l) * 8)
@@ -132,15 +141,18 @@ func _draw() -> void:
 	var hp_ratio := hp / max_hp if max_hp > 0.0 else 0.0
 	var col := C_CORE.lerp(C_CORE_DAMAGED, 1.0 - hp_ratio)
 
+	draw_circle(Vector2.ZERO, RADIUS * 1.9, Color(col.r, col.g, col.b, 0.06))
+
 	var pts := PackedVector2Array([
 		Vector2(0, -RADIUS), Vector2(RADIUS, 0), Vector2(0, RADIUS), Vector2(-RADIUS, 0),
 	])
 	draw_polygon(pts, [col.darkened(0.4)])
 	draw_polyline(pts + PackedVector2Array([pts[0]]), col, 2.5)
+	draw_polyline(pts + PackedVector2Array([pts[0]]), col.lightened(0.35), 1.0)
 	draw_arc(Vector2.ZERO, RADIUS + 8, -PI / 2, -PI / 2 + TAU * hp_ratio, 32, col, 4.0)
 
 	var font := ThemeDB.fallback_font
-	var label := "Avant-poste %d" % (outpost_index + 1)
+	var label := I18n.t("outpost.label") % (outpost_index + 1)
 	var font_size := 12
 	var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
 	draw_string(font, Vector2(-text_size.x / 2.0, -RING_RADIUS - SLOT_RADIUS - 12.0), label,

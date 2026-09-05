@@ -53,6 +53,7 @@ func _ready() -> void:
 	_resize_timers()
 	GameState.station_health_changed.connect(func(_v): queue_redraw())
 	GameState.module_slots_changed.connect(func(_i): queue_redraw())
+	I18n.language_changed.connect(func(): queue_redraw())
 	# Built-in listener (separate from game.gd wiring slot_clicked to the
 	# build/upgrade panel) — that panel already ignores clicks outside
 	# BUILD/UPGRADE, this is the WAVE-phase counterpart for charge modules.
@@ -120,8 +121,15 @@ func _draw() -> void:
 	for i in n:
 		positions.append(_slot_pos(i))
 
-	# Outer ring
+	# Outer ring — a second, thinner ring just inside it gives the dial a bit
+	# of depth instead of a single flat line, and short tick marks at each
+	# slot's angle read as a real instrument bezel rather than a plain circle.
 	draw_arc(Vector2.ZERO, RING_RADIUS + 4, 0, TAU, 64, C_RING, 2.0)
+	draw_arc(Vector2.ZERO, RING_RADIUS - 8, 0, TAU, 64, Color(C_RING, 0.5), 1.0)
+	for i in n:
+		var tick_angle := (i / float(n)) * TAU - PI / 2.0
+		var tick_dir := Vector2(cos(tick_angle), sin(tick_angle))
+		draw_line(tick_dir * (RING_RADIUS + 4), tick_dir * (RING_RADIUS + 12), C_RING, 1.5)
 
 	# Slot connectors (lines from center to each slot)
 	for i in n:
@@ -135,9 +143,19 @@ func _draw() -> void:
 		var col: Color = MODULE_COLORS.get(mtype, C_SLOT_EMPTY)
 		var is_hover := (i == _hovered_slot)
 
+		# Soft tinted glow behind a built slot — cheap fake bloom (two
+		# oversized, low-alpha circles) so a filled slot reads as an active
+		# light source rather than a flat disc, especially against the dark
+		# background between slot and ring.
+		if mtype != GameState.ModuleType.EMPTY:
+			draw_circle(pos, SLOT_RADIUS * 1.8, Color(col.r, col.g, col.b, 0.08))
+			draw_circle(pos, SLOT_RADIUS * 1.35, Color(col.r, col.g, col.b, 0.14))
+
 		if is_hover:
 			draw_circle(pos, SLOT_RADIUS + 4, C_SLOT_HOVER)
 		draw_circle(pos, SLOT_RADIUS, col)
+		draw_arc(pos, SLOT_RADIUS, 0, TAU, 24, col.lightened(0.35), 1.5)
+		ModuleInfo.draw_glyph(self, pos, mtype, SLOT_RADIUS)
 
 		# Level indicators (small dots)
 		var level: int = slot.get("level", 0)
@@ -162,17 +180,22 @@ func _draw() -> void:
 	var hp_color := C_HP_BAR_OK.lerp(C_HP_BAR_LOW, 1.0 - hp_ratio)
 	draw_arc(Vector2.ZERO, CORE_RADIUS + 8, -PI / 2, -PI / 2 + TAU * hp_ratio, 48, hp_color, 4.0)
 
-	# Core
+	# Core — a soft bloom behind it makes the station read as the actual
+	# light source of the whole scene, not just another flat shape on the grid.
 	var core_col := C_CORE.lerp(C_CORE_DAMAGED, 1.0 - (GameState.station_hp / GameState.station_max_hp))
+	draw_circle(Vector2.ZERO, CORE_RADIUS * 2.0, Color(core_col.r, core_col.g, core_col.b, 0.05))
+	draw_circle(Vector2.ZERO, CORE_RADIUS * 1.4, Color(core_col.r, core_col.g, core_col.b, 0.10))
 	draw_circle(Vector2.ZERO, CORE_RADIUS, core_col.darkened(0.4))
 	draw_arc(Vector2.ZERO, CORE_RADIUS, 0, TAU, 48, core_col, 2.5)
 
-	# Inner hexagon
+	# Inner hexagon — a lighter outline on top of the fill gives the panel a
+	# beveled/plated look instead of a single flat-colored shape.
 	var hex := PackedVector2Array()
 	for i in 6:
 		var a := i * PI / 3.0 - PI / 6.0
 		hex.append(Vector2(cos(a), sin(a)) * 20.0)
 	draw_polygon(hex, [core_col.darkened(0.2)])
+	draw_polyline(hex + PackedVector2Array([hex[0]]), core_col.lightened(0.3), 1.5)
 
 	# Turret muzzle flashes
 	for slot_index in _flashes:

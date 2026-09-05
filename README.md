@@ -59,6 +59,13 @@ le Bouclier d'urgence et la Bombe EMP, à usage unique et sans niveau : on
 clique sur leur emplacement pendant une vague pour les déclencher, ce qui
 les consomme.
 
+Chaque emplacement (station et avant-postes) affiche en plus un petit
+pictogramme propre à son type (éclair, canon, croix, etc.) par-dessus sa
+couleur, avec une légère lueur autour des emplacements occupés — le type
+d'un module se reconnaît donc aussi à sa forme, pas seulement à sa
+couleur (utile pour le daltonisme, et plus lisible d'un coup d'œil
+pendant une vague).
+
 ### Matériaux rares
 Les modules ⛏ Foreuse (constructibles sur la station comme sur les
 avant-postes) produisent une deuxième monnaie, séparée de l'énergie : les
