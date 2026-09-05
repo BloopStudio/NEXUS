@@ -138,19 +138,29 @@ func set_network_state(pos: Vector2, new_hp: float) -> void:
 
 func _draw() -> void:
 	var col := color if _hit_flash <= 0.0 else Color.WHITE
-	# Soft glow behind the shape so enemies read clearly against the grid.
-	draw_circle(Vector2.ZERO, shape_radius * 1.35, Color(color.r, color.g, color.b, 0.15))
+	# Soft two-layer glow behind the shape (same fake-bloom trick used on the
+	# station/outpost's own modules) so enemies read as small light sources
+	# against the dark grid instead of flat cutouts, and so the whole game
+	# shares one consistent "glow behind anything that matters" language.
+	draw_circle(Vector2.ZERO, shape_radius * 2.0, Color(color.r, color.g, color.b, 0.06))
+	draw_circle(Vector2.ZERO, shape_radius * 1.35, Color(color.r, color.g, color.b, 0.16))
 
 	draw_set_transform(Vector2.ZERO, _facing_angle, Vector2.ONE)
 	_draw_shape(col)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-	# HP bar (drawn unrotated so it always reads horizontally)
+	# HP bar (drawn unrotated so it always reads horizontally) — a dark
+	# backing plate behind it and a bright top edge on the fill read as a
+	# small beveled instrument instead of two flat rectangles.
 	var ratio := hp / max_hp
 	var bar_w := shape_radius * 2.0
-	draw_rect(Rect2(-shape_radius, -shape_radius - 10, bar_w, 4), Color(0.2, 0.2, 0.2))
-	draw_rect(Rect2(-shape_radius, -shape_radius - 10, bar_w * ratio, 4),
-		Color(0.2, 1.0, 0.3) if ratio > 0.5 else Color(1.0, 0.4, 0.1))
+	var bar_y := -shape_radius - 10.0
+	var bar_col := Color(0.2, 1.0, 0.3) if ratio > 0.5 else Color(1.0, 0.4, 0.1)
+	draw_rect(Rect2(-shape_radius - 1, bar_y - 1, bar_w + 2, 6), Color(0.0, 0.0, 0.0, 0.55))
+	draw_rect(Rect2(-shape_radius, bar_y, bar_w, 4), Color(0.2, 0.2, 0.2))
+	draw_rect(Rect2(-shape_radius, bar_y, bar_w * ratio, 4), bar_col)
+	if ratio > 0.0:
+		draw_line(Vector2(-shape_radius, bar_y), Vector2(-shape_radius + bar_w * ratio, bar_y), bar_col.lightened(0.5), 1.0)
 
 
 ## Override to draw the enemy's specific shape
