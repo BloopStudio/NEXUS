@@ -57,8 +57,18 @@ var _spell_cooldowns: Array[float] = [0.0, 0.0]
 var _ability_pulse: float = 0.0
 var _pulse_color: Color = C_PLAYER
 var _pulse_radius: float = 60.0
+## Which spell the current _ability_pulse belongs to — lets _draw() add a
+## small shape accent on top of the shared expanding ring (spikes for
+## Shockwave, a cross for Soin, frost ticks for Champ ralentisseur) so the
+## three non-Dash spells don't all read as the exact same colored circle.
+var _pulse_spell_id: String = ""
 var _dash_timer: float = 0.0
 var _is_local: bool = false
+## Last non-zero movement direction — only used to orient the Dash trail
+## streaks. Updated from _move_rpc (see below) rather than only the local
+## _physics_process, so a remote peer watching someone else dash still sees
+## the streaks point the right way, not a stale default.
+var _last_move_dir: Vector2 = Vector2.RIGHT
 
 
 func _ready() -> void:
@@ -224,6 +234,9 @@ func _sync_spell_level_rpc(slot: int, level: int) -> void:
 func _move_rpc(pos: Vector2) -> void:
 	if not _is_own_action(multiplayer.get_remote_sender_id()):
 		return
+	var delta_pos := pos - global_position
+	if delta_pos.length() > 0.1:
+		_last_move_dir = delta_pos.normalized()
 	global_position = pos
 	queue_redraw()
 
@@ -243,6 +256,7 @@ func _cast_spell_rpc(spell_id: String, level: int) -> void:
 	var def: Dictionary = Spells.get_scaled_def(spell_id, level)
 	_pulse_color = def["color"]
 	_pulse_radius = def.get("radius", 60.0)
+	_pulse_spell_id = spell_id
 	AudioManager.play_sfx(AudioManager.SFX.UPGRADE, 2.0)
 	queue_redraw()
 
@@ -376,8 +390,11 @@ func _draw() -> void:
 	if _invuln_timer > 0.0 and int(_invuln_timer * 12.0) % 2 == 0:
 		body_color = Color.WHITE
 
-	# Soft outer glow so players read clearly against the background grid.
-	draw_circle(Vector2.ZERO, 17.0, Color(player_color.r, player_color.g, player_color.b, 0.12))
+	# Soft two-layer glow (same fake-bloom used for the station/outposts and
+	# enemies) so players read as a light source against the grid too,
+	# instead of the previous single flat glow circle.
+	draw_circle(Vector2.ZERO, 24.0, Color(player_color.r, player_color.g, player_color.b, 0.06))
+	draw_circle(Vector2.ZERO, 17.0, Color(player_color.r, player_color.g, player_color.b, 0.14))
 
 	# Body: shaded circle + bright rim + a small highlight for some depth.
 	draw_circle(Vector2.ZERO, 12.0, body_color.darkened(0.35))
@@ -407,15 +424,50 @@ func _draw() -> void:
 		]), [Color(0.85, 0.85, 0.9)])
 
 	# Spell cast pulse — expanding, fading ring on every peer that sees it,
-	# colored per-spell so Heal/Slow/Shockwave read differently at a glance.
+	# colored per-spell. A shared ring alone made Shockwave/Soin/Ralentisseur
+	# read as the exact same colored circle — each now adds its own small
+	# accent shape on top so the spell is identifiable even color-blind or
+	# at a glance mid-fight.
 	if _ability_pulse > 0.0:
 		var progress := 1.0 - clampf(_ability_pulse / ABILITY_PULSE_DURATION, 0.0, 1.0)
-		draw_arc(Vector2.ZERO, _pulse_radius * progress, 0, TAU, 40,
-			Color(_pulse_color.r, _pulse_color.g, _pulse_color.b, 1.0 - progress), 3.0, true)
+		var r := _pulse_radius * progress
+		var pulse_alpha := 1.0 - progress
+		var ring_col := Color(_pulse_color.r, _pulse_color.g, _pulse_color.b, pulse_alpha)
+		draw_arc(Vector2.ZERO, r, 0, TAU, 40, ring_col, 3.0, true)
 
-	# Dash trail — glowing rim while the speed boost is active.
+		match _pulse_spell_id:
+			Spells.SHOCKWAVE:
+				# Radiating spike lines punching past the ring — an explosion,
+				# not just a soap bubble.
+				for i in 10:
+					var a := i * TAU / 10.0
+					var dir := Vector2(cos(a), sin(a))
+					draw_line(dir * r * 0.7, dir * (r + 8.0), ring_col, 2.0)
+			Spells.HEAL:
+				# A cross fading in at the center, like the Réparation module's
+				# glyph — reads as "restore" rather than just "area effect".
+				var s := 9.0 * pulse_alpha
+				var col := Color(_pulse_color.r, _pulse_color.g, _pulse_color.b, pulse_alpha)
+				draw_line(Vector2(-s, 0), Vector2(s, 0), col, 3.0)
+				draw_line(Vector2(0, -s), Vector2(0, s), col, 3.0)
+			Spells.SLOW:
+				# Jagged frost ticks around the ring instead of a smooth edge.
+				for i in 12:
+					var a := i * TAU / 12.0
+					var dir := Vector2(cos(a), sin(a))
+					draw_line(dir * (r - 4.0), dir * (r + 4.0), ring_col, 1.5)
+
+	# Dash trail — glowing rim plus a few motion streaks trailing opposite
+	# the movement direction, so the speed boost reads as "moving fast" and
+	# not just "has a colored outline".
 	if _dash_timer > 0.0:
-		draw_arc(Vector2.ZERO, 15.0, 0, TAU, 24, Spells.DEFS[Spells.DASH]["color"], 3.0, true)
+		var dash_col: Color = Spells.DEFS[Spells.DASH]["color"]
+		draw_arc(Vector2.ZERO, 15.0, 0, TAU, 24, dash_col, 3.0, true)
+		var back := -_last_move_dir
+		for i in 3:
+			var offset := Vector2(-back.y, back.x) * (i - 1) * 6.0
+			var alpha := 0.55 - i * 0.05
+			draw_line(offset, offset + back * (18.0 + i * 6.0), Color(dash_col.r, dash_col.g, dash_col.b, alpha), 2.0)
 
 	# Name tag — centered above the player, with a backing pill for contrast
 	# against the background grid (a plain outlined string was easy to miss).

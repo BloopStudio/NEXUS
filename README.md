@@ -105,6 +105,13 @@ recharge restant. Chaque sort équipé peut aussi être amélioré jusqu'au
 niveau 3 avec l'énergie de l'équipe pendant la phase de construction
 (bouton sous son icône) : la recharge diminue et l'effet augmente.
 
+À l'écran, chaque sort a son propre accent visuel par-dessus l'anneau
+d'effet commun (pointes pour l'Onde de choc, croix pour le Soin
+d'urgence, dents de givre pour le Champ ralentisseur), et la Ruée laisse
+une traînée de mouvement dans la direction parcourue — visible de la
+même façon pour tous les joueurs de la partie, pas seulement celui qui
+lance le sort.
+
 ### Classes
 Avant une partie, chaque joueur choisit une classe qui modifie légèrement
 ses statistiques de base et suggère un sort de départ (sans jamais le
