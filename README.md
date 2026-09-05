@@ -187,6 +187,17 @@ enregistrés — seul l'hôte a une source fiable du numéro de vague). À la fi
 d'une partie, un écran de statistiques (vague atteinte, dégâts totaux
 infligés, temps de survie) s'affiche avant le retour au menu.
 
+### Langue
+Le menu Réglages a un onglet **Langue** avec 10 langues disponibles
+(anglais, français, espagnol, allemand, italien, portugais, russe,
+japonais, chinois, arabe). Au premier lancement, la langue est détectée
+automatiquement à partir de l'appareil ; si elle n'est pas dans la liste,
+le jeu démarre en anglais par défaut. Le choix est mémorisé localement.
+Cette première version couvre le menu principal, le HUD, les réglages et
+les noms de modules — certains textes plus spécifiques (arbre de
+compétences, classes, sorts, mutateurs) restent pour l'instant en
+français, en attendant une prochaine passe de traduction.
+
 ## Build
 
 ### Télécharger un exécutable

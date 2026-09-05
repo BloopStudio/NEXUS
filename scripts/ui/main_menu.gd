@@ -36,6 +36,7 @@ const UPDATE_CHECK_URL := "https://api.github.com/repos/BloopStudio/NEXUS/releas
 
 func _ready() -> void:
 	_build_ui()
+	I18n.language_changed.connect(_on_language_changed)
 	NetworkManager.connection_succeeded.connect(_on_connection_succeeded)
 	NetworkManager.connection_failed.connect(_on_connection_failed)
 	NetworkManager.upnp_status.connect(_on_upnp_status)
@@ -46,6 +47,18 @@ func _ready() -> void:
 	NetworkManager.player_disconnected.connect(_on_lobby_players_changed)
 	NetworkManager.players_updated.connect(_on_lobby_players_changed)
 	_check_for_update()
+
+
+## Rebuilds the whole menu from scratch when the language changes — the
+## simplest way to re-text everything without threading a retranslation hook
+## through every label individually. If the player is already hosting/joined
+## when they flip languages, the code/lobby panels reset to hidden (a
+## harmless cosmetic reset, not a state loss the game logic can't recover —
+## NetworkManager's own connection is untouched, only the display is rebuilt).
+func _on_language_changed() -> void:
+	for child in get_children():
+		child.queue_free()
+	_build_ui()
 
 
 # ─── UI builder ────────────────────────────────────────────────────────────────
@@ -95,7 +108,7 @@ func _build_ui() -> void:
 	center.add_child(title)
 
 	var sub := Label.new()
-	sub.text = "Defend the station. Together."
+	sub.text = I18n.t("menu.subtitle")
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.add_theme_font_size_override("font_size", 14)
 	sub.add_theme_color_override("font_color", C_DIM)
@@ -108,16 +121,16 @@ func _build_ui() -> void:
 	name_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	center.add_child(name_row)
 	var name_lbl := Label.new()
-	name_lbl.text = "Nom : "
+	name_lbl.text = I18n.t("menu.name_label")
 	name_lbl.add_theme_color_override("font_color", C_TEXT)
 	name_row.add_child(name_lbl)
 	_player_name_input = LineEdit.new()
-	_player_name_input.placeholder_text = "Joueur"
+	_player_name_input.placeholder_text = I18n.t("menu.default_player_name")
 	_player_name_input.custom_minimum_size = Vector2(180, 36)
 	# Reuse the name from last time if one was saved, otherwise fall back to
 	# a random default like before.
 	_player_name_input.text = ProfileStore.player_name if not ProfileStore.player_name.is_empty() \
-		else "Joueur%d" % randi_range(1, 99)
+		else "%s%d" % [I18n.t("menu.default_player_name"), randi_range(1, 99)]
 	name_row.add_child(_player_name_input)
 
 	_spacer(center, 8)
@@ -127,7 +140,7 @@ func _build_ui() -> void:
 	class_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	center.add_child(class_row)
 	var class_lbl := Label.new()
-	class_lbl.text = "Classe : "
+	class_lbl.text = I18n.t("menu.class_label")
 	class_lbl.add_theme_color_override("font_color", C_TEXT)
 	class_row.add_child(class_lbl)
 
@@ -155,7 +168,7 @@ func _build_ui() -> void:
 	mutator_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	center.add_child(mutator_row)
 	var mutator_lbl := Label.new()
-	mutator_lbl.text = "Modificateur (hôte) : "
+	mutator_lbl.text = I18n.t("menu.mutator_label")
 	mutator_lbl.add_theme_color_override("font_color", C_TEXT)
 	mutator_row.add_child(mutator_lbl)
 
@@ -175,7 +188,7 @@ func _build_ui() -> void:
 	# Two independent dropdowns, not a fixed pairing — the player can put any
 	# spell on either key, or even pick the same one twice.
 	var loadout_lbl := Label.new()
-	loadout_lbl.text = "Sorts (touches E / A) :"
+	loadout_lbl.text = I18n.t("menu.spells_label")
 	loadout_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	loadout_lbl.add_theme_color_override("font_color", C_DIM)
 	loadout_lbl.add_theme_font_size_override("font_size", 13)
@@ -198,15 +211,15 @@ func _build_ui() -> void:
 	_spacer(center, 8)
 
 	# ── Buttons ──
-	var btn_host := _make_button("🛡  Héberger une partie", 44)
+	var btn_host := _make_button(I18n.t("menu.btn_host"), 44)
 	btn_host.pressed.connect(_on_host_pressed)
 	center.add_child(btn_host)
 
-	var btn_join := _make_button("🔗  Rejoindre avec un code", 44)
+	var btn_join := _make_button(I18n.t("menu.btn_join"), 44)
 	btn_join.pressed.connect(_on_join_pressed)
 	center.add_child(btn_join)
 
-	var btn_solo := _make_button("🤖  Solo (test local)", 44)
+	var btn_solo := _make_button(I18n.t("menu.btn_solo"), 44)
 	btn_solo.pressed.connect(_on_solo_pressed)
 	center.add_child(btn_solo)
 
@@ -217,19 +230,19 @@ func _build_ui() -> void:
 	utility_row.add_theme_constant_override("separation", 8)
 	center.add_child(utility_row)
 
-	var btn_settings := _make_button("⚙  Réglages", 40)
+	var btn_settings := _make_button(I18n.t("menu.btn_settings"), 40)
 	btn_settings.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	btn_settings.custom_minimum_size = Vector2(0, 40)
 	btn_settings.pressed.connect(_on_settings_pressed)
 	utility_row.add_child(btn_settings)
 
-	var btn_scores := _make_button("🏆  Classement", 40)
+	var btn_scores := _make_button(I18n.t("menu.btn_scores"), 40)
 	btn_scores.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	btn_scores.custom_minimum_size = Vector2(0, 40)
 	btn_scores.pressed.connect(_on_scores_pressed)
 	utility_row.add_child(btn_scores)
 
-	var btn_quit := _make_button("✕  Quitter", 40)
+	var btn_quit := _make_button(I18n.t("menu.btn_quit"), 40)
 	btn_quit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	btn_quit.custom_minimum_size = Vector2(0, 40)
 	btn_quit.pressed.connect(_on_quit_pressed)
@@ -252,7 +265,7 @@ func _build_ui() -> void:
 	var pc_vbox := VBoxContainer.new()
 	_party_code_panel.add_child(pc_vbox)
 	var pc_lbl := Label.new()
-	pc_lbl.text = "Code de partie (clique dessus pour le copier) :"
+	pc_lbl.text = I18n.t("menu.code_label")
 	pc_lbl.add_theme_color_override("font_color", C_DIM)
 	pc_lbl.add_theme_font_size_override("font_size", 13)
 	pc_vbox.add_child(pc_lbl)
@@ -263,10 +276,10 @@ func _build_ui() -> void:
 	_code_display.add_theme_font_size_override("font_size", 18)
 	_code_display.add_theme_color_override("font_color", C_ACCENT)
 	_code_display.add_theme_color_override("font_hover_color", C_ACCENT.lightened(0.3))
-	_code_display.tooltip_text = "Cliquer pour copier"
+	_code_display.tooltip_text = I18n.t("menu.code_hint")
 	_code_display.pressed.connect(_on_code_display_pressed)
 	pc_vbox.add_child(_code_display)
-	var btn_start := _make_button("▶  Démarrer la partie")
+	var btn_start := _make_button(I18n.t("menu.btn_start"))
 	btn_start.pressed.connect(_on_start_pressed)
 	pc_vbox.add_child(btn_start)
 
@@ -277,22 +290,22 @@ func _build_ui() -> void:
 	var join_vbox := VBoxContainer.new()
 	_join_panel.add_child(join_vbox)
 	var join_lbl := Label.new()
-	join_lbl.text = "Entre le code de partie :"
+	join_lbl.text = I18n.t("menu.join_label")
 	join_lbl.add_theme_color_override("font_color", C_DIM)
 	join_vbox.add_child(join_lbl)
 	_code_input = LineEdit.new()
-	_code_input.placeholder_text = "Code Base64..."
+	_code_input.placeholder_text = I18n.t("menu.join_code_placeholder")
 	_code_input.custom_minimum_size = Vector2(380, 38)
 	join_vbox.add_child(_code_input)
 
 	var note := Label.new()
-	note.text = "ℹ  Le code fourni par l'hôte suffit — aucune manip réseau\n    n'est nécessaire dans la grande majorité des cas."
+	note.text = I18n.t("menu.join_note")
 	note.add_theme_color_override("font_color", C_DIM)
 	note.add_theme_font_size_override("font_size", 12)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD
 	join_vbox.add_child(note)
 
-	var btn_connect := _make_button("🔌  Se connecter")
+	var btn_connect := _make_button(I18n.t("menu.btn_connect"))
 	btn_connect.pressed.connect(_on_connect_pressed)
 	join_vbox.add_child(btn_connect)
 
@@ -306,7 +319,7 @@ func _build_ui() -> void:
 	lobby_vbox.add_theme_constant_override("separation", 4)
 	_lobby_panel.add_child(lobby_vbox)
 	var lobby_lbl := Label.new()
-	lobby_lbl.text = "Joueurs dans la partie :"
+	lobby_lbl.text = I18n.t("menu.lobby_label")
 	lobby_lbl.add_theme_color_override("font_color", C_DIM)
 	lobby_lbl.add_theme_font_size_override("font_size", 13)
 	lobby_vbox.add_child(lobby_lbl)
@@ -343,7 +356,7 @@ func _on_host_pressed() -> void:
 	_stun_success = false
 	var err := NetworkManager.host_game()
 	if err != OK:
-		_set_status("Erreur : impossible d'ouvrir le port 7777.", C_ERROR)
+		_set_status(I18n.t("status.port_error"), C_ERROR)
 		return
 	var code := NetworkManager.get_party_code()
 	_code_display.text = code
@@ -351,7 +364,7 @@ func _on_host_pressed() -> void:
 	_join_panel.visible = false
 	_lobby_panel.visible = true
 	_refresh_lobby_list()
-	_set_status("Ouverture automatique du port…", C_DIM)
+	_set_status(I18n.t("status.opening_port"), C_DIM)
 
 
 ## UPnP and STUN discovery run in parallel on separate threads and can finish
@@ -380,13 +393,13 @@ func _refresh_connectivity_status() -> void:
 	_code_display.text = NetworkManager.get_party_code()
 
 	if _upnp_success:
-		_set_status("Prêt ! Partage juste le code — aucune manip requise.", C_SUCCESS)
+		_set_status(I18n.t("status.ready_upnp"), C_SUCCESS)
 	elif _stun_success:
-		_set_status("Port non ouvert automatiquement, mais une adresse alternative a été trouvée — le code a de bonnes chances de fonctionner quand même.", C_SUCCESS)
+		_set_status(I18n.t("status.ready_stun"), C_SUCCESS)
 	elif _upnp_done and _stun_done:
-		_set_status("Routeur incompatible UPnP et adresse non joignable détectée : le code ne marchera qu'en réseau local, sauf si tu ouvres le port 7777 (UDP) toi-même.", C_ERROR)
+		_set_status(I18n.t("status.no_upnp_no_stun"), C_ERROR)
 	else:
-		_set_status("Ouverture automatique du port…", C_DIM)
+		_set_status(I18n.t("status.opening_port"), C_DIM)
 
 
 func _on_join_pressed() -> void:
@@ -406,7 +419,7 @@ func _on_code_display_pressed() -> void:
 		return
 	DisplayServer.clipboard_set(_code_display.text)
 	AudioManager.play_sfx(AudioManager.SFX.UI_CLICK)
-	_set_status("Code copié dans le presse-papiers !", C_SUCCESS)
+	_set_status(I18n.t("status.code_copied"), C_SUCCESS)
 
 
 func _on_quit_pressed() -> void:
@@ -426,7 +439,7 @@ func _on_scores_pressed() -> void:
 	var top: Array = ProfileStore.get_top_scores()
 	if top.is_empty():
 		var empty_lbl := Label.new()
-		empty_lbl.text = "Aucune partie hébergée pour l'instant."
+		empty_lbl.text = I18n.t("menu.scores_empty")
 		empty_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		empty_lbl.add_theme_color_override("font_color", C_DIM)
 		empty_lbl.add_theme_font_size_override("font_size", 12)
@@ -434,7 +447,7 @@ func _on_scores_pressed() -> void:
 		return
 
 	var header := Label.new()
-	header.text = "Meilleures vagues atteintes (parties hébergées ici) :"
+	header.text = I18n.t("menu.scores_header")
 	header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	header.add_theme_color_override("font_color", C_DIM)
 	header.add_theme_font_size_override("font_size", 12)
@@ -443,7 +456,7 @@ func _on_scores_pressed() -> void:
 	for i in top.size():
 		var entry: Dictionary = top[i]
 		var row := Label.new()
-		row.text = "%d. %s — Vague %d (%s)" % [i + 1, entry.get("name", "?"), entry.get("wave", 0), entry.get("date", "")]
+		row.text = I18n.t("status.score_row") % [i + 1, entry.get("name", "?"), entry.get("wave", 0), entry.get("date", "")]
 		row.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		row.add_theme_font_size_override("font_size", 13)
 		row.add_theme_color_override("font_color", C_ACCENT if i == 0 else C_TEXT)
@@ -460,7 +473,7 @@ func _on_settings_pressed() -> void:
 
 func _on_start_pressed() -> void:
 	if NetworkManager.get_player_count() < 1:
-		_set_status("En attente d'au moins un joueur…", C_ERROR)
+		_set_status(I18n.t("status.waiting_player"), C_ERROR)
 		return
 	NetworkManager.start_game(_get_selected_mutator())
 
@@ -469,16 +482,16 @@ func _on_connect_pressed() -> void:
 	_apply_player_name()
 	var code := _code_input.text.strip_edges()
 	if code.is_empty():
-		_set_status("Entre un code de partie.", C_ERROR)
+		_set_status(I18n.t("status.enter_code"), C_ERROR)
 		return
-	_set_status("Connexion en cours…", C_DIM)
+	_set_status(I18n.t("status.connecting"), C_DIM)
 	var err := NetworkManager.join_with_code(code)
 	if err != OK:
-		_set_status("Code invalide.", C_ERROR)
+		_set_status(I18n.t("status.invalid_code"), C_ERROR)
 
 
 func _on_connection_succeeded() -> void:
-	_set_status("Connecté ! En attente du démarrage…", C_SUCCESS)
+	_set_status(I18n.t("status.connected"), C_SUCCESS)
 	_lobby_panel.visible = true
 	_refresh_lobby_list()
 
@@ -488,15 +501,13 @@ func _on_connection_succeeded() -> void:
 ## instead of a single unmoving "Connexion en cours…" for up to ~15s.
 func _on_joining_candidate(index: int, total: int, _ip: String) -> void:
 	if total <= 1:
-		_set_status("Connexion en cours…", C_DIM)
+		_set_status(I18n.t("status.connecting"), C_DIM)
 	else:
-		_set_status("Connexion en cours… (essai %d/%d)" % [index + 1, total], C_DIM)
+		_set_status(I18n.t("status.connecting_attempt") % [index + 1, total], C_DIM)
 
 
 func _on_connection_failed() -> void:
-	_set_status("Connexion échouée (délai dépassé). Vérifie le code, ou l'hôte n'est " +
-		"pas joignable depuis internet (pare-feu, ou routeur/box en CGNAT — dans ce " +
-		"cas, seul le réseau local de l'hôte peut se connecter).", C_ERROR)
+	_set_status(I18n.t("status.connection_failed"), C_ERROR)
 
 
 func _on_game_starting(mutator: int) -> void:
@@ -550,7 +561,7 @@ func _on_update_pressed() -> void:
 func _apply_player_name() -> void:
 	var n := _player_name_input.text.strip_edges()
 	if n.is_empty():
-		n = "Joueur"
+		n = I18n.t("menu.default_player_name")
 	var spells: Array = [
 		_spell_slot_e.get_item_metadata(_spell_slot_e.selected),
 		_spell_slot_a.get_item_metadata(_spell_slot_a.selected),
@@ -588,8 +599,8 @@ func _refresh_lobby_list() -> void:
 		if peer_id == 1:
 			tags += " 👑"
 		if peer_id == local_id:
-			tags += " (toi)"
-		row.text = "●  %s%s" % [info.get("name", "Joueur"), tags]
+			tags += I18n.t("menu.you_tag")
+		row.text = "●  %s%s" % [info.get("name", I18n.t("menu.default_player_name")), tags]
 		row.add_theme_font_size_override("font_size", 14)
 		row.add_theme_color_override("font_color", info.get("color", C_TEXT))
 		_lobby_list.add_child(row)

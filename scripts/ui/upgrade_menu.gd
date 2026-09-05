@@ -133,7 +133,7 @@ func _build_ui() -> void:
 	_hint_label.offset_top    = -140.0
 	_hint_label.offset_bottom = -104.0
 	_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_hint_label.text = "Clique sur un emplacement de la station pour construire ou améliorer"
+	_hint_label.text = I18n.t("upgrade.hint")
 	_hint_label.add_theme_font_size_override("font_size", 14)
 	_hint_label.add_theme_color_override("font_color", C_DIM)
 	add_child(_hint_label)
@@ -307,7 +307,7 @@ func _rebuild_panel_contents() -> void:
 			var b := Button.new()
 			b.custom_minimum_size = Vector2(96, 56)
 			b.add_theme_font_size_override("font_size", 12)
-			b.tooltip_text = "%s : %s%s" % [ModuleInfo.NAMES[t], get_module_effect_text(t, 1), _current_synergy_note(_selected_slot, t)]
+			b.tooltip_text = "%s : %s%s" % [I18n.module_name(t), get_module_effect_text(t, 1), _current_synergy_note(_selected_slot, t)]
 			b.pressed.connect(func(): _build(captured_t))
 			grid.add_child(b)
 			_build_buttons.append(b)
@@ -318,7 +318,7 @@ func _rebuild_panel_contents() -> void:
 		hint.add_theme_color_override("font_color", C_DIM)
 		_panel_body.add_child(hint)
 	else:
-		_panel_title.text = "%s — %s" % [location_label, ModuleInfo.NAMES[mtype]]
+		_panel_title.text = "%s — %s" % [location_label, I18n.module_name(mtype)]
 		var level: int = slot.get("level", 0)
 
 		var current_effect := Label.new()
@@ -344,7 +344,7 @@ func _rebuild_panel_contents() -> void:
 			_panel_body.add_child(lbl)
 		elif level >= 3:
 			var lbl := Label.new()
-			lbl.text = "%s %s — Niveau MAX" % [ModuleInfo.ICONS[mtype], ModuleInfo.NAMES[mtype]]
+			lbl.text = "%s %s — Niveau MAX" % [ModuleInfo.ICONS[mtype], I18n.module_name(mtype)]
 			lbl.add_theme_color_override("font_color", C_ACCENT)
 			_panel_body.add_child(lbl)
 		else:
@@ -381,7 +381,7 @@ func _refresh_affordability() -> void:
 			var cost: float = GameState.get_module_build_cost(t)
 			var can: bool   = GameState.can_afford(cost)
 			var b := _build_buttons[i]
-			b.text = "%s %s\n%d ⚡" % [ModuleInfo.ICONS[t], ModuleInfo.NAMES[t], int(cost)]
+			b.text = "%s %s\n%d ⚡" % [ModuleInfo.ICONS[t], I18n.module_name(t), int(cost)]
 			b.disabled = not can
 			b.modulate = C_WHITE if can else C_DISABLED
 	elif _upgrade_button != null:

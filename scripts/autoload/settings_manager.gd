@@ -5,12 +5,6 @@ extends Node
 const SAVE_PATH := "user://settings.cfg"
 
 const REBINDABLE_ACTIONS := ["move_up", "move_down", "move_left", "move_right", "shoot", "ability", "ability_2", "ping_focus", "ping_help"]
-const ACTION_LABELS := {
-	"move_up": "Avancer", "move_down": "Reculer",
-	"move_left": "Aller à gauche", "move_right": "Aller à droite",
-	"shoot": "Tirer", "ability": "Sort (emplacement 1)", "ability_2": "Sort (emplacement 2)",
-	"ping_focus": "Marqueur : Focus ici", "ping_help": "Marqueur : Besoin d'aide",
-}
 
 var fullscreen: bool = false
 var vsync: bool = true
@@ -22,6 +16,9 @@ const FPS_LIMIT_OPTIONS := [0, 30, 60, 120, 144, 240, 360]
 var master_volume: float = 1.0
 var music_volume: float = 0.8
 var sfx_volume: float = 1.0
+
+## "" = not chosen yet, I18n auto-detects from the device on first launch.
+var language: String = ""
 
 # action_name -> InputEvent (only the *first* rebound event, we keep it simple)
 var _custom_binds: Dictionary = {}
@@ -49,6 +46,8 @@ func load_settings() -> void:
 	music_volume = cfg.get_value("audio", "music", music_volume)
 	sfx_volume = cfg.get_value("audio", "sfx", sfx_volume)
 
+	language = cfg.get_value("locale", "language", language)
+
 	for action in REBINDABLE_ACTIONS:
 		var event: InputEvent = cfg.get_value("controls", action, null)
 		if event != null:
@@ -66,6 +65,8 @@ func save_settings() -> void:
 	cfg.set_value("audio", "master", master_volume)
 	cfg.set_value("audio", "music", music_volume)
 	cfg.set_value("audio", "sfx", sfx_volume)
+
+	cfg.set_value("locale", "language", language)
 
 	for action in _custom_binds:
 		cfg.set_value("controls", action, _custom_binds[action])

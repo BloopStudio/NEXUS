@@ -20,6 +20,8 @@ var _station_label: Label      = null
 var _station_bar:   ColorRect  = null
 var _station_bar_bg: ColorRect = null
 var _player_list:   VBoxContainer = null
+var _settings_btn:  Button        = null
+var _quit_btn:      Button        = null
 
 # ── Spell slots (bottom-center) ──
 const SPELL_KEYS := ["E", "A"]
@@ -33,7 +35,22 @@ func _ready() -> void:
 	layer = 10
 	_build_ui()
 	_connect_signals()
+	I18n.language_changed.connect(_on_language_changed)
 	set_process(true)
+
+
+## Re-texts the static labels/buttons in place (unlike main_menu.gd/
+## settings_menu.gd, this doesn't rebuild — the HUD's structure is simple
+## enough, and rebuilding while a wave is running would risk losing the
+## spell-slot polling state momentarily).
+func _on_language_changed() -> void:
+	_energy_label.text = I18n.t("hud.energy") % int(GameState.energy)
+	_materials_label.text = I18n.t("hud.materials") % int(GameState.rare_materials)
+	_wave_label.text = I18n.t("hud.wave") % GameState.wave_number
+	_station_label.text = I18n.t("hud.station") % [int(GameState.station_hp), int(GameState.station_max_hp)]
+	_settings_btn.text = I18n.t("hud.settings")
+	_quit_btn.text = I18n.t("hud.quit")
+	_refresh_player_list()
 
 
 func _process(_delta: float) -> void:
@@ -52,7 +69,7 @@ func _build_ui() -> void:
 	_energy_label = Label.new()
 	_energy_label.add_theme_font_size_override("font_size", 18)
 	_energy_label.add_theme_color_override("font_color", C_ACCENT)
-	_energy_label.text = "ÉNERGIE: 50"
+	_energy_label.text = I18n.t("hud.energy") % 50
 	tl_vbox.add_child(_energy_label)
 
 	# Only meaningful once a Foreuse module exists somewhere on the team, but
@@ -62,7 +79,7 @@ func _build_ui() -> void:
 	_materials_label = Label.new()
 	_materials_label.add_theme_font_size_override("font_size", 13)
 	_materials_label.add_theme_color_override("font_color", Color(0.85, 0.65, 0.4))
-	_materials_label.text = "⛏ MATÉRIAUX: 0"
+	_materials_label.text = I18n.t("hud.materials") % 0
 	tl_vbox.add_child(_materials_label)
 
 	# ── Top-center: Wave + countdown bar ─────────────────────────────────────
@@ -84,7 +101,7 @@ func _build_ui() -> void:
 	_wave_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_wave_label.add_theme_font_size_override("font_size", 18)
 	_wave_label.add_theme_color_override("font_color", C_WHITE)
-	_wave_label.text = "VAGUE 0"
+	_wave_label.text = I18n.t("hud.wave") % 0
 	tc_vbox.add_child(_wave_label)
 
 	# Countdown bar background
@@ -107,7 +124,7 @@ func _build_ui() -> void:
 	_station_label = Label.new()
 	_station_label.add_theme_font_size_override("font_size", 15)
 	_station_label.add_theme_color_override("font_color", C_WHITE)
-	_station_label.text = "STATION 500/500"
+	_station_label.text = I18n.t("hud.station") % [500, 500]
 	tr_vbox.add_child(_station_label)
 
 	_station_bar_bg = ColorRect.new()
@@ -206,8 +223,9 @@ func _build_ui() -> void:
 		slot_stack.add_child(key_lbl)
 
 	# ── Top-right, below station HP: settings + leave the match ──────────────
-	var settings_btn := Button.new()
-	settings_btn.text = "⚙ Réglages"
+	_settings_btn = Button.new()
+	var settings_btn := _settings_btn
+	settings_btn.text = I18n.t("hud.settings")
 	settings_btn.anchor_left = 1.0
 	settings_btn.anchor_right = 1.0
 	settings_btn.offset_left = -208.0
@@ -218,8 +236,9 @@ func _build_ui() -> void:
 	settings_btn.pressed.connect(_on_settings_pressed)
 	add_child(settings_btn)
 
-	var quit_btn := Button.new()
-	quit_btn.text = "✕ Quitter"
+	_quit_btn = Button.new()
+	var quit_btn := _quit_btn
+	quit_btn.text = I18n.t("hud.quit")
 	quit_btn.anchor_left = 1.0
 	quit_btn.anchor_right = 1.0
 	quit_btn.offset_left = -208.0
@@ -248,20 +267,20 @@ func _connect_signals() -> void:
 # ─── Signal handlers ──────────────────────────────────────────────────────────
 
 func _on_energy_changed(val: float) -> void:
-	_energy_label.text = "ÉNERGIE: %d" % int(val)
+	_energy_label.text = I18n.t("hud.energy") % int(val)
 
 
 func _on_rare_materials_changed(val: float) -> void:
-	_materials_label.text = "⛏ MATÉRIAUX: %d" % int(val)
+	_materials_label.text = I18n.t("hud.materials") % int(val)
 
 
 func _on_wave_changed(num: int) -> void:
-	_wave_label.text = "VAGUE %d" % num
+	_wave_label.text = I18n.t("hud.wave") % num
 
 
 func _on_station_health_changed(hp: float) -> void:
 	var ratio := hp / GameState.station_max_hp
-	_station_label.text = "STATION %d/%d" % [int(hp), int(GameState.station_max_hp)]
+	_station_label.text = I18n.t("hud.station") % [int(hp), int(GameState.station_max_hp)]
 	_station_bar.anchor_right = ratio
 	_station_bar.color = C_HP_OK.lerp(C_HP_LOW, 1.0 - ratio)
 
@@ -318,7 +337,7 @@ func _update_spell_slots() -> void:
 		btn.visible = can_build
 		if can_build:
 			if level >= Spells.MAX_LEVEL:
-				btn.text = "Nv. MAX"
+				btn.text = I18n.t("hud.level_max")
 				btn.disabled = true
 			else:
 				var cost: float = Spells.LEVEL_UP_COST[level]
@@ -352,7 +371,7 @@ func _refresh_player_list() -> void:
 
 		var suffix := ""
 		if peer_id == NetworkManager.HOST_PEER_ID:
-			suffix = "  👑 hôte"
+			suffix = I18n.t("hud.host_tag")
 		elif info.has("ping_ms"):
 			suffix = "  %dms" % int(info["ping_ms"])
 		else:

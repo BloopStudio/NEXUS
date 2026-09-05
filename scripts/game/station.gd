@@ -195,12 +195,12 @@ func _draw() -> void:
 		var slot: Dictionary = GameState.module_slots[_hovered_slot]
 		var mtype: int = slot["type"]
 		var level: int = slot.get("level", 0)
-		var label: String = ModuleInfo.NAMES[mtype]
+		var label: String = I18n.module_name(mtype)
 		if mtype != GameState.ModuleType.EMPTY:
-			label += " (niv. %d)" % level
+			label += I18n.t("module.tooltip_level") % level
 		label += GameState.get_synergy_note(_hovered_slot)
 		if slot.get("disabled", false):
-			label += " · 🔒 désactivé (Saboteur)"
+			label += I18n.t("module.tooltip_disabled")
 		var font := ThemeDB.fallback_font
 		var font_size := 14
 		var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
