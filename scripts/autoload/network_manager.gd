@@ -70,10 +70,28 @@ signal players_updated()
 ## one aged out, or a broadcasting host's player count/name changed).
 signal lan_games_updated()
 
-# Local player info sent to peers on join
+# Local player info sent to peers on join. "color" here is never actually
+# used for the in-game player color (see PLAYER_COLORS/_next_player_color
+# below) — every player, including a lone solo player, used to default to
+# this exact Color.CYAN, which is nearly identical to the station's own
+# core color. That was always a latent "player blends into the station"
+# risk; it only became a real bug once the station's own glow bloom grew
+# large enough (see station.gd's visual-detail pass) to actually swallow a
+# same-colored dot sitting right at the player's spawn point.
 var local_player_info := {"name": "Player", "color": Color.CYAN}
 # All players: peer_id -> info dict (peer id 1 is always the host)
 var players := {}
+
+## Assigned by join order (see _next_player_color), never taken from what a
+## client sends — deliberately excludes anything close to the station's own
+## cyan core color, so a player is never at risk of blending into it. Sized
+## to MAX_PLAYERS so every seat gets its own distinct color.
+const PLAYER_COLORS := [
+	Color(1.0, 0.55, 0.15),  # orange
+	Color(1.0, 0.2, 0.6),    # pink
+	Color(0.4, 1.0, 0.3),    # green
+	Color(1.0, 0.85, 0.1),   # yellow
+]
 
 const HOST_PEER_ID := 1
 const PING_INTERVAL := 1.5
@@ -244,8 +262,13 @@ func host_game(port: int = DEFAULT_PORT) -> Error:
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 
-	# Register host as player 1
-	players[1] = local_player_info.duplicate()
+	# Register host as player 1 — color assigned by join order (see
+	# PLAYER_COLORS), not taken from local_player_info, so the host (and a
+	# solo player, which is just a host with no one else connected) never
+	# defaults to the same cyan as the station's own core.
+	var host_info := local_player_info.duplicate()
+	host_info["color"] = _next_player_color()
+	players[1] = host_info
 
 	_try_setup_upnp(port)
 	_try_stun_discovery()
@@ -564,27 +587,36 @@ func _teardown_stun() -> void:
 @rpc("any_peer", "reliable")
 func register_player(info: Dictionary) -> void:
 	var sender := multiplayer.get_remote_sender_id()
-	players[sender] = _sanitize_player_info(info)
+	var sanitized := _sanitize_player_info(info)
+	sanitized["color"] = _next_player_color()
+	players[sender] = sanitized
 	player_connected.emit(sender)
 	# Notify the new peer about all existing players
 	_send_player_list.rpc_id(sender, players)
 
 
-## A modified/malicious client could send a garbage class id, an unknown
-## spell id, or a wrongly-typed name/color at registration — a legit client
-## never can (the main menu's dropdowns only ever offer valid values), but
-## nothing stops a hand-crafted RPC call from skipping that UI entirely.
-## Left unchecked, that data gets stored and synced to every peer, and the
-## first time anything indexes PlayerClasses.DEFS[class_id] or
-## Spells.DEFS[spell_id] with it (damage calcs, spell casts, the HUD) it
-## crashes that lookup on EVERY peer, not just the sender's. Clamp
-## everything to known-safe values before it's ever stored.
+## Next color in PLAYER_COLORS, picked by how many players have already
+## joined (not by peer_id, which ENet doesn't hand out in a small predictable
+## range) — good enough to keep every seat visually distinct up to
+## MAX_PLAYERS without needing real collision tracking.
+func _next_player_color() -> Color:
+	return PLAYER_COLORS[players.size() % PLAYER_COLORS.size()]
+
+
+## A modified/malicious client could send a garbage class id or an unknown
+## spell id at registration — a legit client never can (the main menu's
+## dropdowns only ever offer valid values), but nothing stops a hand-crafted
+## RPC call from skipping that UI entirely. Left unchecked, that data gets
+## stored and synced to every peer, and the first time anything indexes
+## PlayerClasses.DEFS[class_id] or Spells.DEFS[spell_id] with it (damage
+## calcs, spell casts, the HUD) it crashes that lookup on EVERY peer, not
+## just the sender's. Clamp everything to known-safe values before it's ever
+## stored. ("color" isn't sanitized here — it's never taken from client data
+## at all, see _next_player_color.)
 func _sanitize_player_info(info: Dictionary) -> Dictionary:
 	var player_name: String = str(info.get("name", "Player")).left(24)
 	if player_name.is_empty():
 		player_name = "Player"
-	var color_val = info.get("color", Color.CYAN)
-	var color: Color = color_val if color_val is Color else Color.CYAN
 	var class_id = info.get("class", PlayerClasses.DEFAULT_CLASS)
 	if not (class_id is int and PlayerClasses.DEFS.has(class_id)):
 		class_id = PlayerClasses.DEFAULT_CLASS
@@ -593,7 +625,7 @@ func _sanitize_player_info(info: Dictionary) -> Dictionary:
 	if spells_val is Array and spells_val.size() == 2 \
 			and Spells.DEFS.has(spells_val[0]) and Spells.DEFS.has(spells_val[1]):
 		safe_spells = spells_val
-	return {"name": player_name, "color": color, "class": class_id, "spells": safe_spells}
+	return {"name": player_name, "class": class_id, "spells": safe_spells}
 
 
 ## Host → client(s): here's the full player list. Sent to just the joining

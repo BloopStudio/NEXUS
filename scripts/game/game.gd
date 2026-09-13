@@ -220,9 +220,12 @@ func _add_player(peer_id: int) -> void:
 	# player_class must be set BEFORE add_child — Player._ready() (run by
 	# add_child, below) reads it to set max_hp/hp.
 	player.player_class = info.get("class", PlayerClasses.DEFAULT_CLASS)
-	# Spread players in a small arc at start
+	# Spread players in a small arc at start, clear of the station's own
+	# module ring (radius 110) and its glow bloom — spawning inside either
+	# used to put a player right where the station's soft cyan halo (station.gd)
+	# could visually swallow a similarly-colored dot.
 	var angle := (float(_players.size()) / maxf(1.0, float(NetworkManager.players.size()))) * TAU
-	player.position = Vector2(cos(angle), sin(angle)) * 80.0
+	player.position = Vector2(cos(angle), sin(angle)) * 160.0
 	add_child(player)
 	_players[peer_id] = player
 
