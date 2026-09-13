@@ -434,11 +434,21 @@ func _on_join_pressed() -> void:
 	_party_code_panel.visible = false
 
 
+## Solo used to be its own hand-rolled shortcut (host_game() then jump
+## straight to GameState.reset()+change_scene, bypassing start_game()
+## entirely) — a second, less-exercised path that could drift from the
+## normal "host, then click Démarrer" flow (e.g. it never went through
+## _start_game_rpc, so it never stopped the LAN broadcast — see
+## NetworkManager.start_game). Solo is just "host, then start immediately
+## with only yourself in the lobby", so it now reuses that exact same call
+## instead of a separate implementation.
 func _on_solo_pressed() -> void:
 	_apply_player_name()
-	NetworkManager.host_game()
-	GameState.reset(_get_selected_mutator())
-	SceneLoader.change_scene("res://scenes/game.tscn")
+	var err := NetworkManager.host_game()
+	if err != OK:
+		_set_status(I18n.t("status.port_error"), C_ERROR)
+		return
+	NetworkManager.start_game(_get_selected_mutator())
 
 
 func _on_code_display_pressed() -> void:
