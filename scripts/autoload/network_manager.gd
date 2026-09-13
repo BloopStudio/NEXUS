@@ -688,6 +688,11 @@ func start_game(mutator: int = 0) -> void:
 
 @rpc("authority", "call_local", "reliable")
 func _start_game_rpc(mutator: int) -> void:
+	# Once the match actually starts it's no longer a joinable lobby — a LAN
+	# listener would otherwise keep seeing it as "browsable" forever (until
+	# the host eventually disconnects), even though joining now wouldn't
+	# drop a new player into anything sensible.
+	_stop_lan_broadcast()
 	game_starting.emit(mutator)
 
 
