@@ -66,6 +66,9 @@ signal game_starting(mutator: int)
 ## than a peer joining/leaving (e.g. a fresh ping reading) — connect this if
 ## you display more than just the join/leave events (see HUD player list).
 signal players_updated()
+## Emitted whenever the LAN-discovered game list changes (a new game seen,
+## one aged out, or a broadcasting host's player count/name changed).
+signal lan_games_updated()
 
 # Local player info sent to peers on join
 var local_player_info := {"name": "Player", "color": Color.CYAN}
@@ -95,8 +98,34 @@ var _join_candidates: Array = []
 var _join_candidate_index: int = -1
 var _join_port: int = DEFAULT_PORT
 
+# ─── LAN discovery ───────────────────────────────────────────────────────────
+# A separate, much simpler mechanism from the party-code system above: a
+# plain UDP broadcast on the local network, so joining a friend's game on the
+# same Wi-Fi/router doesn't need a code copy-pasted at all. Fully independent
+# of UPnP/STUN — this never leaves the local subnet, so it works even with no
+# internet access whatsoever.
+const DISCOVERY_PORT := 7778
+const DISCOVERY_MAGIC := "NEXUSLAN1"
+const DISCOVERY_BROADCAST_INTERVAL := 1.5
+## A host not heard from in this long is assumed gone (closed, or its
+## broadcast packets stopped reaching us) and dropped from the list.
+const DISCOVERY_ENTRY_TIMEOUT := 4.0
+
+## key = "ip:port" → {"ip", "port", "name", "players", "max", "last_seen"}
+## (last_seen in Time.get_ticks_msec()). Read this directly from the main
+## menu's LAN panel; lan_games_updated() fires whenever it changes.
+var lan_games: Dictionary = {}
+
+var _lan_broadcast_socket: PacketPeerUDP = null
+var _lan_broadcast_timer: float = 0.0
+var _lan_broadcast_port: int = DEFAULT_PORT
+var _lan_listen_socket: PacketPeerUDP = null
+
 
 func _process(delta: float) -> void:
+	_process_lan_broadcast(delta)
+	_process_lan_listen()
+
 	# Host-only: periodically ping every connected client so everyone's
 	# player list can show a rough latency-to-host figure.
 	if multiplayer.multiplayer_peer == null or not is_host():
@@ -108,6 +137,98 @@ func _process(delta: float) -> void:
 			if peer_id != HOST_PEER_ID:
 				_ping_rpc.rpc_id(peer_id, Time.get_ticks_msec())
 var _upnp_thread: Thread = null
+
+
+## Starts announcing this hosted game on the local network — called from
+## host_game() itself, so any host is automatically discoverable, no extra
+## step. Uses its own UDP socket (not the ENet game socket), broadcast to
+## 255.255.255.255 so every device on the subnet can pick it up regardless
+## of its own IP.
+func _start_lan_broadcast(port: int) -> void:
+	_lan_broadcast_socket = PacketPeerUDP.new()
+	_lan_broadcast_socket.set_broadcast_enabled(true)
+	_lan_broadcast_port = port
+	_lan_broadcast_timer = 0.0  # send the first announcement immediately
+
+
+func _stop_lan_broadcast() -> void:
+	_lan_broadcast_socket = null
+
+
+func _process_lan_broadcast(delta: float) -> void:
+	if _lan_broadcast_socket == null:
+		return
+	_lan_broadcast_timer -= delta
+	if _lan_broadcast_timer > 0.0:
+		return
+	_lan_broadcast_timer = DISCOVERY_BROADCAST_INTERVAL
+	var payload := {
+		"magic": DISCOVERY_MAGIC,
+		"name": local_player_info.get("name", "Partie"),
+		"players": players.size(),
+		"max": MAX_PLAYERS,
+		"port": _lan_broadcast_port,
+	}
+	var bytes := JSON.stringify(payload).to_utf8_buffer()
+	_lan_broadcast_socket.set_dest_address("255.255.255.255", DISCOVERY_PORT)
+	_lan_broadcast_socket.put_packet(bytes)
+
+
+## Starts listening for other hosts' broadcasts — called by the main menu as
+## soon as it's shown (browsing doesn't require doing anything else first),
+## and stopped once the player actually hosts/joins/leaves the menu, so it
+## never competes with the party-code flow or holds the port needlessly.
+func start_lan_listening() -> void:
+	if _lan_listen_socket != null:
+		return
+	_lan_listen_socket = PacketPeerUDP.new()
+	var err := _lan_listen_socket.bind(DISCOVERY_PORT)
+	if err != OK:
+		push_warning("NetworkManager: couldn't bind LAN discovery port %d — %s" % [DISCOVERY_PORT, err])
+		_lan_listen_socket = null
+
+
+func stop_lan_listening() -> void:
+	_lan_listen_socket = null
+	lan_games.clear()
+
+
+func _process_lan_listen() -> void:
+	if _lan_listen_socket != null:
+		while _lan_listen_socket.get_available_packet_count() > 0:
+			var bytes := _lan_listen_socket.get_packet()
+			var sender_ip := _lan_listen_socket.get_packet_ip()
+			_handle_lan_announcement(sender_ip, bytes)
+
+	if lan_games.is_empty():
+		return
+	# Prune hosts we haven't heard from in a while (closed, or out of range).
+	var now := Time.get_ticks_msec()
+	var stale: Array = []
+	for key in lan_games:
+		if now - lan_games[key]["last_seen"] > DISCOVERY_ENTRY_TIMEOUT * 1000.0:
+			stale.append(key)
+	if not stale.is_empty():
+		for key in stale:
+			lan_games.erase(key)
+		lan_games_updated.emit()
+
+
+func _handle_lan_announcement(sender_ip: String, bytes: PackedByteArray) -> void:
+	var parsed = JSON.parse_string(bytes.get_string_from_utf8())
+	if typeof(parsed) != TYPE_DICTIONARY or parsed.get("magic") != DISCOVERY_MAGIC:
+		return
+	var port: int = int(parsed.get("port", DEFAULT_PORT))
+	var key := "%s:%d" % [sender_ip, port]
+	lan_games[key] = {
+		"ip": sender_ip,
+		"port": port,
+		"name": str(parsed.get("name", "Partie")),
+		"players": int(parsed.get("players", 0)),
+		"max": int(parsed.get("max", MAX_PLAYERS)),
+		"last_seen": Time.get_ticks_msec(),
+	}
+	lan_games_updated.emit()
 
 
 # ─── Hosting ───────────────────────────────────────────────────────────────────
@@ -128,6 +249,8 @@ func host_game(port: int = DEFAULT_PORT) -> Error:
 
 	_try_setup_upnp(port)
 	_try_stun_discovery()
+	stop_lan_listening()  # browsing and hosting don't overlap
+	_start_lan_broadcast(port)
 	return OK
 
 
@@ -334,6 +457,7 @@ func decode_party_code(code: String) -> Dictionary:
 ## Direct single-address connect — the low-level primitive both join_with_code
 ## (below, trying several candidates in sequence) and manual/LAN-IP joins use.
 func join_game(ip: String, port: int = DEFAULT_PORT) -> Error:
+	stop_lan_listening()
 	_join_candidates = [ip]
 	_join_candidate_index = 0
 	_join_port = port
@@ -351,6 +475,7 @@ func join_with_code(code: String) -> Error:
 		connection_failed.emit()
 		return ERR_INVALID_PARAMETER
 
+	stop_lan_listening()
 	_join_candidates = info["ips"]
 	_join_port = info["port"]
 	_join_candidate_index = 0
@@ -412,6 +537,7 @@ func disconnect_from_game() -> void:
 	_disconnect_signals()
 	_teardown_upnp()
 	_teardown_stun()
+	_stop_lan_broadcast()
 
 
 func _teardown_upnp() -> void:

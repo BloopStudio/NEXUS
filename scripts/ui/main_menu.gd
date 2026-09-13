@@ -30,6 +30,7 @@ var _scores_panel: PanelContainer
 var _scores_list: VBoxContainer
 var _lobby_panel: PanelContainer
 var _lobby_list: VBoxContainer
+var _lan_list: VBoxContainer
 
 # GitHub Releases API — no auth needed for a public repo's latest release.
 const UPDATE_CHECK_URL := "https://api.github.com/repos/BloopStudio/NEXUS/releases/latest"
@@ -46,7 +47,16 @@ func _ready() -> void:
 	NetworkManager.player_connected.connect(_on_lobby_players_changed)
 	NetworkManager.player_disconnected.connect(_on_lobby_players_changed)
 	NetworkManager.players_updated.connect(_on_lobby_players_changed)
+	NetworkManager.lan_games_updated.connect(_refresh_lan_list)
+	NetworkManager.start_lan_listening()
 	_check_for_update()
+
+
+func _exit_tree() -> void:
+	# Only relevant while still just browsing — host_game()/join_with_code()/
+	# join_game() already stop listening themselves once a match is actually
+	# under way, so this is a no-op then (stop_lan_listening is idempotent).
+	NetworkManager.stop_lan_listening()
 
 
 ## Rebuilds the whole menu from scratch when the language changes — the
@@ -289,6 +299,23 @@ func _build_ui() -> void:
 	center.add_child(_join_panel)
 	var join_vbox := VBoxContainer.new()
 	_join_panel.add_child(join_vbox)
+
+	# ── LAN-discovered games — an alternative to typing a code at all, for
+	# whoever's on the same local network/Wi-Fi as the host. Listed above the
+	# manual code entry since it needs zero copy-pasting when it's available.
+	var lan_lbl := Label.new()
+	lan_lbl.text = I18n.t("menu.lan_label")
+	lan_lbl.add_theme_color_override("font_color", C_DIM)
+	lan_lbl.add_theme_font_size_override("font_size", 13)
+	join_vbox.add_child(lan_lbl)
+	_lan_list = VBoxContainer.new()
+	_lan_list.add_theme_constant_override("separation", 4)
+	join_vbox.add_child(_lan_list)
+	_refresh_lan_list()
+
+	var sep := HSeparator.new()
+	join_vbox.add_child(sep)
+
 	var join_lbl := Label.new()
 	join_lbl.text = I18n.t("menu.join_label")
 	join_lbl.add_theme_color_override("font_color", C_DIM)
@@ -490,6 +517,13 @@ func _on_connect_pressed() -> void:
 		_set_status(I18n.t("status.invalid_code"), C_ERROR)
 
 
+func _on_lan_join_pressed(ip: String, port: int) -> void:
+	AudioManager.play_sfx(AudioManager.SFX.UI_CLICK)
+	_apply_player_name()
+	_set_status(I18n.t("status.connecting"), C_DIM)
+	NetworkManager.join_game(ip, port)
+
+
 func _on_connection_succeeded() -> void:
 	_set_status(I18n.t("status.connected"), C_SUCCESS)
 	_lobby_panel.visible = true
@@ -604,6 +638,46 @@ func _refresh_lobby_list() -> void:
 		row.add_theme_font_size_override("font_size", 14)
 		row.add_theme_color_override("font_color", info.get("color", C_TEXT))
 		_lobby_list.add_child(row)
+
+
+## Rebuilds the LAN games list — connected to NetworkManager.lan_games_updated,
+## so it stays current as hosts on the local network appear/disappear without
+## the player needing to manually refresh anything.
+func _refresh_lan_list() -> void:
+	if _lan_list == null:
+		return  # signal can fire before _build_ui() reaches this point
+	for child in _lan_list.get_children():
+		child.queue_free()
+
+	if NetworkManager.lan_games.is_empty():
+		var empty_lbl := Label.new()
+		empty_lbl.text = I18n.t("menu.lan_empty")
+		empty_lbl.add_theme_font_size_override("font_size", 12)
+		empty_lbl.add_theme_color_override("font_color", C_DIM)
+		_lan_list.add_child(empty_lbl)
+		return
+
+	var keys: Array = NetworkManager.lan_games.keys()
+	keys.sort()
+	for key in keys:
+		var entry: Dictionary = NetworkManager.lan_games[key]
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		_lan_list.add_child(row)
+
+		var lbl := Label.new()
+		lbl.text = "🌐 %s — %d/%d" % [entry["name"], entry["players"], entry["max"]]
+		lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		lbl.add_theme_font_size_override("font_size", 13)
+		row.add_child(lbl)
+
+		var btn := Button.new()
+		btn.text = I18n.t("menu.lan_join")
+		btn.custom_minimum_size = Vector2(90, 32)
+		var ip: String = entry["ip"]
+		var port: int = entry["port"]
+		btn.pressed.connect(func(): _on_lan_join_pressed(ip, port))
+		row.add_child(btn)
 
 
 func _get_selected_mutator() -> int:

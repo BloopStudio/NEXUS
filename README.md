@@ -19,8 +19,15 @@ Jeu de survie/vagues/gestion multijoueur — défendez votre station ensemble.
 
 ### Rejoindre une partie
 1. Lance le jeu → "Rejoindre avec un code"
-2. Entre le code de partie
+2. Si l'hôte est sur le même réseau local, sa partie apparaît
+   automatiquement dans "Parties détectées sur ce réseau" — un clic sur
+   "Rejoindre" suffit, sans code à copier. Sinon, entre le code de partie
+   qu'il t'a donné.
 3. Attends que l'hôte démarre
+
+La détection locale (LAN) fonctionne par diffusion UDP sur le réseau —
+elle ne sort jamais d'internet et marche même sans connexion internet,
+tant que les deux machines sont sur le même réseau/Wi-Fi.
 
 ## Mécaniques
 
